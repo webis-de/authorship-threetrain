@@ -1,0 +1,100 @@
+How to compute the binned information gain score
+INPUT:
+	A natural number n
+	A tree pattern p
+	A list of document classes C1,...,Cm. Each document class is a set of documents.
+OUTPUT:
+	A real number.
+
+Let D be |C1| + ... + |Cm|
+We first precoumpute the value of H(C):
+	For each k=1,...,m, calculate |Ck| / D and sum the values of -|Ck|/D log( |Ck|/D )
+Once p and n are given, sum the following values as i=1,...,n:
+	Compute the vector (v1,...,vm) (yes, this seems unavoidable) where
+		vk := |{ d in Ck : freq(p,d) in pi}|.
+	Let v := v1+...+vm. We have P(X in pi) = v/D. Now we add the values
+		P(X in pi) * P(Ck|X in pi) * log P(Ck | X in pi)
+			= P(X in pi AND Ck) * log( P(X in pi AND Ck) / P(X in pi) )
+			= vk/D * log( vk/v )
+	as k=1,...,m. We define the expression above to be 0 in case vk=0 (note v=0 => vk=0 since all vk' >= 0).
+
+How to compute the binned information gain score upper bound
+
+We state Theorem 1 as follows:
+Given a tree pattern t, its super patterns
+including itself have a conditional entropy lower bound in the
+frequency distribution (A' , B' , p)
+of one of the following two forms:
+	- A1' = A1+A2, A2'=0, Ai' = 0 Ai for i>= 3
+	  B1' = B1, B2' = sum Bi (i=2,...,n) and Bi' = 0 for i >= 3
+	- the same with A and B swapped.
+
+The conditional entropy of a frequency distribution (A,B,p) is given by
+	H(A,B) := -sum(i=1,...n) (Ai+Bi)/D * (f(Ai/(Ai+Bi)) + f(Bi/(Ai+Bi))) where f(x) = x*log(x).
+
+We call a frequency distribution (or proper frequency distribution) any real-valued n x m-matrix A
+subject to the conditions Aik >= 0 and sum (i=1,...,n) Aik = |Ck|.
+Let ai := sum (k=1,...,m) Aik and N := sum (i=1,...,n) ai.
+We define the conditional entropy of A by
+	H(A) := -sum(i=1,...,n) sum(k=1,...,m) Aik / N log(Aik/ai).
+Suppose now we have a frequency distribution A' equal to A except for
+A'11 = A11+x, A'21 = A21-x for some 0 <= x <= A21.
+Now some calculation shows
+	d H(A')/dx = -1/N (log( (A11+x)/(a1+x)) - log( (A21-x)/(a2-x) )).
+Let g(x) := H(A'). In case A11/a1 >= A21/a2, we have g'(x) <= 0 for all x >= 0,
+hence g takes its minimum at x=A21.
+Certainly, g' is strictly monotonically decreasing in x. Hence no minimum may be attained at inner points.
+In case A11/a1 < A21/a2, both x=0 and x=A2 are candidates for minima (for lim g'(x)=-infty as x to A21). There seems no obvious choice, where the smaller
+value occurs.
+
+A frequency distribution B shall be called superdistribution of A, if
+	sum (i=1,...,j) Aik <= sum (i=1,...,j) Bik
+for all j and k. This is, by definition of a frequency distribution, equivalent to
+	sum (i=j,...,n) Aik >= sum (i=j,...n) Bik
+for all j and k.
+
+If t is a tree pattern and t' a superpattern, then the frequency distribution induced by t' is a superdistribution
+of the frequency distribution induced by t.
+
+We aim to find a computable lower bound for the conditional entropy of A and each of its superdistributions.
+The set of superdistributions of A is compact (as subset of R^(n*m)), hence there is a superdistribution
+S with minimal conditional entropy.
+Let i<j, k arbitrary, 0 <= x <= Sjk and T(x) be the frequency distribution equal to S beside
+	T(x)ik = Sik+x, T(x)jk = Sjk-x.
+Then T(x) is a superdistribution of S. If g(x) := H(T(x)), then the minimum of g is attained at x=0.
+From the considerations above, we deduce
+	Sik/si < Sjk/sj or Sjk = 0 where si = sum (k=1,...,m) Sik.
+Since sum (k=1,...,m) Sik/si = 1 = sum (k=1,...,m) Sjk/sj,
+there is some k such that Sjk = 0. WLOG, say S21 = 0. It follows Si1 = 0 for i >= 2.
+Denote by U the frequency distribution same to S beside
+	U2k = sum (i=2,...,n) Sik, Uik = 0 whenever i >= 3 and k >= 2.
+Then U is a superdistribution of S. Let ui := sum (k=1,...,m) Uik.
+Then ui = si in case i=1 and ui = 0 in case i>= 3.
+It is a plain lie to say that the i=2-term of H(U) vanishes, unless m=2.
+
+We have simply
+H(S) >= g(S) := -1/N sum (i=1,...,n) Si1 log(Si1/s1).
+A differential calculus argument shows that this expression is monotonically increasing in each entry of S.
+We know Si1 >= Ai1 for all i and Si1 >= Ai1 + Ai2 for, at least, one value of i.
+
+We propose the following algorithm to compute the binned information gain upper bound (in fact, we compute the conditional entropy lower bound):
+INPUT:
+	A natural number n
+	A tree pattern p
+	A list of document classes C1,...,Cm. Each document class is a set of documents.
+OUTPUT:
+	A real number.
+Intialize the vectors A and B with zero entries (A,B in N_0^m)
+For k=1,...,m:
+	for each document d in Ck:
+		Calculate freq(t,d).
+		If freq(t,d) is in p1, increate A[k] by one
+		If freq(t,d) is in p2, increate B[k] by one
+Return the minimum of the following values, as k=1,...,m:
+	Let a := A1 + ... + Am + Bk
+	The value is (Ak+Bk)*log( (Ak+Bk)/a ) plus the sum of Al * log(Al/a) where l != k.
+	As usual, we define x*log(x/y):=0 in case x*y = 0.
+
+Careful inspection shows that this is the bound encoded in theorem 1, though more general in its possibilities and
+way simpler in its proof.
+Note that this estimate will likely get more worthless as the size of the intervals p1 (and p2) goes to zero.

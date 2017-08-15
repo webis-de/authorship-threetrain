@@ -1,0 +1,38 @@
+The algorithm from the kim paper is summarized as follows:
+
+We keep a list of candidate patterns. In the beginning, it contains exactly one pattern, which is empty
+(alternatively, the singleton patterns for each occuring node).
+
+With each candidate pattern p, we keep a list of its occurances in the database.
+An occurance is a 3-tuple (D,S,E) where D is a document (index, possibly), S the sentence (index, possibly)
+and E the embedding. An embedding is a mapping from the nodes of p to the nodes of S. We enumerate
+the nodes of p in a breadth-first manner and hence can encode E as an array of nodes.
+
+For each sentence S in the database, we keep B(S) the (set or single example) of the patterns, which
+	- occur in S
+	- have the highest binned information gain score among all patterns occuring in S, that yet have been investigated
+For each such pattern, we store its binned information gain score. Denote by IG(B(S)) the binned information gain score of any such pattern.
+
+As input, we get a number k which means we are looking for patterns with at most k embeddeable edges.
+For each pattern, we store seperately the number of embeddeable edges.
+We tackle one candidate tree after the next until we run out of candidates.
+Pick a candidate pattern p (remove it from the list). Iterate the nodes n of p which have no right sibling (including the root).
+If the number of embeddeable edges in p is less then k, then:
+	Let the edge type denote either "normal edge" or "embedeabble edge" (iterate twice).
+Otherwise, let the edge type denote "normal edge" (iterate once).
+Iterate the embeddings (D,S,E) of p.
+We look for nodes v in S such that
+	- there is an edge of the selected edge type from v up to E(n)
+	- If n has children and n' is the rightmost child of n, w is the child of E(n) such that v a descendant of w,
+		then w is right of E(n')
+We count which label of v occur how often. If a label occurs in less than theta sentences, discard it. Otherwise form
+a pattern p' by extending p at the node n by the node v as rightmost child connected by an edge of the selected type.
+At this point, we already have the list of embeddings of p' and the number of embeddeable edges in p'.
+Compute the information gain upper bound IGub for the superpatterns of p'. Compute the information gain IG of p'.
+Let candidate equal to False.
+For each embedding (D,S,E) of p', we do the following:
+	- If IG > IG(B(S)), then we set B(S) to {p'}. If IG = IG(B(S)), we set B(S) to B(S) u {p}
+	- If IGub >= IG(B(S)), let candidate equal to True.
+In case candidate is True, add p' to the list of candidate patterns.
+
+If there are no more candidate patterns, we return the union of B(S), where S goes through all available sentences (Lemma 3).
