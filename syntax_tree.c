@@ -67,8 +67,8 @@ void st_setTreeExtendable(st_tree* tree, _Bool isExtendable) {
 		tree->flags &= ~TREEFLAG_EXTENDABLE_EDGE;
 	}
 }
-void st_printTree(const st_tree* t, int level) {
-	int i;
+void st_printTree(const st_tree* t, unsigned int level) {
+	unsigned int i;
 	for (i=0; i<level; i++) printf("  ");
 	if (t->flags & TREEFLAG_EXTENDABLE_EDGE) printf("(extendable) ");
 	printf("%d\n", t->label);
@@ -104,7 +104,7 @@ unsigned int st_countNodes(const st_tree* tree) {
 	}
 	return result;
 }
-const st_tree** st_listNodes(const st_tree* tree, const st_tree** nodelist) {
+const st_tree** st_listNodes(const st_tree* tree, const st_tree** nodelist) { // not tested!
 	//returns an array of pointers to the tree's nodes, in breadth-first manner.
 	//nodelist must be a writeable memory region of size sizeof(st_tree*) * st_countNodes(tree)
 	//returns nodelist + countNodes(tree)
@@ -236,7 +236,7 @@ double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern
 		unsigned int total=0;
 		for (i=0; i<base->num_documents;i++) total += frequencyMatrix[i];
 		for (i=0; i<base->num_documents;i++) {
-			unsigned int extra=frequencyMatrix[base->num_documents +i];
+			unsigned int extra=frequencyMatrix[base->num_classes +i];
 			total += extra;
 			frequencyMatrix[i] += extra;
 			double val=0;
@@ -248,32 +248,130 @@ double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern
 		}
 		*lowerBound = min*dinv;
 	}
+	free(frequencyMatrix);
 	return result;
 }
 //next: Algorithm to store double linked lists of patterns.
-int main(int argc, char* argv[]) {
-	st_tree* leaf1 = st_prepareTree(1, 0);
-	st_tree* leaf2 = st_prepareTree(2, 0);
-	st_tree* leaf3 = st_prepareTree(3, 0);
-	st_tree* branch1 = st_prepareTree(1, 2);
-	st_setTreeChild(branch1, 0, leaf1);
-	st_setTreeChild(branch1, 1, leaf2);
-	st_tree* root = st_prepareTree(42, 2);
-	st_setTreeChild(root, 0, branch1);
-	st_setTreeChild(root, 1, leaf3);
-	unsigned int num_nodes = st_countNodes(root);
-	st_tree** nodelist = malloc(sizeof(st_tree*) * num_nodes);
-	st_listNodes(root, (const st_tree**) nodelist);
-	int i;
-	for (i=0; i < num_nodes; i++) {
-		printf("Node %d:\n", i);
-		st_printTree(nodelist[i],0);
+struct st_partialPatternEmbedding {
+	unsigned int documentIndex;
+	unsigned int sentenceIndex;
+	st_tree** rightPath;
+	struct st_partialPatternEmbedding* next;
+};
+typedef struct st_partialPatternEmbedding st_patternEmbedding;
+struct st_patternListEntry {
+	st_tree* pattern;
+	st_patternEmbedding* embedding;
+	struct st_patternListEntry* pred;
+	struct st_patternListEntry* succ;
+};
+typedef struct st_patternListEntry st_listedPattern;
+typedef struct {
+	unsigned int length;
+	double cachedIG;
+	st_listedPattern* first;
+	st_listedPattern* last;
+} st_patternList;
+st_patternList* st_createEmptyPatternList() {
+	st_patternList* result = malloc(sizeof(st_patternList));
+	result->length=0;
+	result->cachedIG = -1;
+	result->first=NULL;
+	result->last=NULL;
+	return result;
+}
+void st_patternListInsertFirst(st_patternList* list, st_tree* pattern, st_patternEmbedding* embedding) {
+	st_listedPattern* link = malloc(sizeof(st_listedPattern));
+	link->pattern = pattern;
+	link->embedding=embedding;
+	link->pred = NULL;
+	link->succ = list->first;
+	list->first=link;
+	if (list->last == NULL) list->last=link;
+	list->length++;
+}
+void st_patternListInsertLast(st_patternList* list, st_tree* pattern, st_patternEmbedding* embedding) {
+	st_listedPattern* link = malloc(sizeof(st_listedPattern));
+	link->pattern = pattern;
+	link->embedding=embedding;
+	link->succ = NULL;
+	link->pred = list->last;
+	list->last=link;
+	if (list->first == NULL) list->first=link;
+	list->length++;
+}
+void st_patternListRemoveFirst(st_patternList* list) {
+	st_listedPattern* link = list->first;
+	list->first = link->succ;
+	if (link->succ == NULL) {
+		list->last = NULL;
+	} else {
+		link->succ->pred = NULL;
 	}
-	st_tree* copy = st_deepCopyTree(root);
-	printf("root: %p, copy: %p\n", root, copy);
-	st_printTree(copy,0);
-	st_freeTree(root);
-	st_freeTree(copy);
-	free(nodelist);
+	free(link);
+	list->length--;
+}
+void st_patternListRemoveLast(st_patternList* list) {
+	st_listedPattern* link = list->last;
+	list->last = link->pred;
+	if (link->pred == NULL) {
+		list->first = NULL;
+	} else {
+		link->pred->succ = NULL;
+	}
+	free(link);
+	list->length--;
+}
+void st_shallowCleanupList(st_patternList* list) {
+	st_listedPattern* link;
+	link=list->first;
+	while (link != NULL) {
+		st_listedPattern* tmp=link;
+		link=link->succ;
+		free(tmp);
+	}
+	list->length=0;
+	list->first=NULL;
+	list->last=NULL;
+}
+int main(int argc, char* argv[]) {
+	st_tree* tree1 = st_prepareTree(1, 0);
+	st_tree* tree2 = st_prepareTree(2, 0);
+	st_tree* tree3 = st_prepareTree(3, 0);
+	st_tree* tree4 = st_prepareTree(4, 0);
+	st_document* doc1 = st_prepareDocument(1);
+	st_documentSetTree(doc1,0,tree1);
+	st_document* doc2 = st_prepareDocument(1);
+	st_documentSetTree(doc2,0,tree2);
+	st_document* doc3 = st_prepareDocument(1);
+	st_documentSetTree(doc3,0,tree3);
+	st_document* doc4 = st_prepareDocument(1);
+	st_documentSetTree(doc4,0,tree4);
+	st_documentclass* class1 = st_prepareDocumentClass(2);
+	st_setDocumentInClass(class1,0,doc1);
+	st_setDocumentInClass(class1,1,doc2);
+	st_documentclass* class2 = st_prepareDocumentClass(2);
+	st_setDocumentInClass(class2,0,doc3);
+	st_setDocumentInClass(class2,1,doc4);
+	st_documentbase* base = st_prepareDocumentBase(2);
+	st_setClassInDocumentBase(base,0,class1);
+	st_setClassInDocumentBase(base,1,class2);
+	st_completeDocumentBaseSetup(base);
+
+	double est;
+	printf("%f\n", st_conditionalEntropy(base,tree1,100,&est));
+	printf("%f\n", est);
+
+	st_freeDocumentBase(base);
+	st_freeDocumentClass(class1);
+	st_freeDocumentClass(class2);
+	st_shallowFreeDocument(doc1);
+	st_shallowFreeDocument(doc2);
+	st_shallowFreeDocument(doc3);
+	st_shallowFreeDocument(doc4);
+	st_shallowFreeTree(tree1);
+	st_shallowFreeTree(tree2);
+	st_shallowFreeTree(tree3);
+	st_shallowFreeTree(tree4);
 	return 0;
 }

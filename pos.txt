@@ -1,45 +1,76 @@
-1. 	CC 	Coordinating conjunction
-2. 	CD 	Cardinal number
-3. 	DT 	Determiner
-4. 	EX 	Existential there
-5. 	FW 	Foreign word
-6. 	IN 	Preposition or subordinating conjunction
-7. 	JJ 	Adjective
-8. 	JJR 	Adjective, comparative
-9. 	JJS 	Adjective, superlative
-10. 	LS 	List item marker
-11. 	MD 	Modal
-12. 	NN 	Noun, singular or mass
-13. 	NNS 	Noun, plural
-14. 	NNP 	Proper noun, singular
-15. 	NNPS 	Proper noun, plural
-16. 	PDT 	Predeterminer
-17. 	POS 	Possessive ending
-18. 	PRP 	Personal pronoun
-19. 	PRP$ 	Possessive pronoun
-20. 	RB 	Adverb
-21. 	RBR 	Adverb, comparative
-22. 	RBS 	Adverb, superlative
-23. 	RP 	Particle
-24. 	SYM 	Symbol
-25. 	TO 	to
-26. 	UH 	Interjection
-27. 	VB 	Verb, base form
-28. 	VBD 	Verb, past tense
-29. 	VBG 	Verb, gerund or present participle
-30. 	VBN 	Verb, past participle
-31. 	VBP 	Verb, non-3rd person singular present
-32. 	VBZ 	Verb, 3rd person singular present
-33. 	WDT 	Wh-determiner
-34. 	WP 	Wh-pronoun
-35. 	WP$ 	Possessive wh-pronoun
-36. 	WRB 	Wh-adverb 
-37.	#	hash sign
-38.	$	dollar sign
-39.	.	sentence-final punctuation
-40.	,	comma
-41.	:	colon or semi-colon
-42.	-LSB-	(
-43.	-RSB-	)
-44.	``	open quote
-45.	''	closing quote
+S 	 simple declarative clause, i.e. one that is not introduced by a (possible empty) subordinating conjunction or a wh-word and that does not exhibit subject-verb inversion.
+SBAR 	 Clause introduced by a (possibly empty) subordinating conjunction.
+SBARQ 	 Direct question introduced by a wh-word or a wh-phrase. Indirect questions and relative clauses should be bracketed as SBAR, not SBARQ.
+SINV 	 Inverted declarative sentence, i.e. one in which the subject follows the tensed verb or modal.
+SQ 	 Inverted yes/no question, or main clause of a wh-question, following the wh-phrase in SBARQ.
+ADJP 	 Adjective Phrase.
+ADVP 	 Adverb Phrase.
+CONJP 	 Conjunction Phrase.
+FRAG 	 Fragment.
+INTJ 	 Interjection. Corresponds approximately to the part-of-speech tag UH.
+LST 	 List marker. Includes surrounding punctuation.
+NAC 	 Not a Constituent; used to show the scope of certain prenominal modifiers within an NP.
+NP 	 Noun Phrase.
+NX 	 Used within certain complex NPs to mark the head of the NP. Corresponds very roughly to N-bar level but used quite differently.
+PP 	 Prepositional Phrase.
+PRN 	 Parenthetical.
+PRT 	 Particle. Category for words that should be tagged RP.
+QP 	 Quantifier Phrase (i.e. complex measure/amount phrase); used within NP.
+RRC 	 Reduced Relative Clause.
+UCP 	 Unlike Coordinated Phrase.
+VP 	 Vereb Phrase.
+WHADJP 	 Wh-adjective Phrase. Adjectival phrase containing a wh-adverb, as in how hot.
+WHAVP 	 Wh-adverb Phrase. Introduces a clause with an NP gap. May be null (containing the 0 complementizer) or lexical, containing a wh-adverb such as how or why.
+WHNP 	 Wh-noun Phrase. Introduces a clause with an NP gap. May be null (containing the 0 complementizer) or lexical, containing some wh-word, e.g. who, which book, whose daughter, none of which, or how many leopards.
+WHPP 	 Wh-prepositional Phrase. Prepositional phrase containing a wh-noun phrase (such as of which or by whose authority) that either introduces a PP gap or is contained by a WHNP.
+X 	 Unknown, uncertain, or unbracketable. X is often used for bracketing typos and in bracketing the...the-constructions.
+CC 	Coordinating conjunction
+CD 	Cardinal number
+DT 	Determiner
+EX 	Existential there
+FW 	Foreign word
+IN 	Preposition or subordinating conjunction
+JJ 	Adjective
+JJR 	Adjective, comparative
+JJS 	Adjective, superlative
+LS 	List item marker
+MD 	Modal
+NN 	Noun, singular or mass
+NNS 	Noun, plural
+NNP 	Proper noun, singular
+NNPS 	Proper noun, plural
+PDT 	Predeterminer
+POS 	Possessive ending
+PRP 	Personal pronoun
+PRP$ 	Possessive pronoun
+RB 	Adverb
+RBR 	Adverb, comparative
+RBS 	Adverb, superlative
+RP 	Particle
+SYM 	Symbol
+TO 	to
+UH 	Interjection
+VB 	Verb, base form
+VBD 	Verb, past tense
+VBG 	Verb, gerund or present participle
+VBN 	Verb, past participle
+VBP 	Verb, non-3rd person singular present
+VBZ 	Verb, 3rd person singular present
+WDT 	Wh-determiner
+WP 	Wh-pronoun
+WP$ 	Possessive wh-pronoun
+WRB 	Wh-adverb 
+#	hash sign
+$	dollar sign
+.	sentence-final punctuation
+,	comma
+:	colon or semi-colon
+-LSB-	(
+-LRB-	(
+-RSB-	)
+-RRB-	)
+``	open quote
+''	closing quote
+ROOT	internally used for technical reasons -- occurs in the output of stanford nlp
+'-NONE-'	https://gist.github.com/nlothian/9240750
+WHADVP	https://gist.github.com/nlothian/9240750

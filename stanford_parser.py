@@ -1,6 +1,8 @@
 import subprocess
 import os.path
 import tempfile
+import sys
+from werkzeug import cached_property
 class stanfordTree:
 	def __init__(self, label, parent=None, position=None):
 		self.label=label
@@ -27,6 +29,26 @@ class stanfordTree:
 			return '['+(self.data or 'None')+'/'+self.label+']'
 		else:
 			return '['+self.label+' '+' '.join(ch.__str__() for ch in self.children)+']'
+	def writeStream(self, stream):
+		stream.write(self.label+"\n"+(self.data or '')+"\n"+str(len(self.children))+"\n")
+		for ch in self.children:
+			ch.writeStream(stream)
+	@cached_property
+	def leaves(self):
+		if len(self.children) == 0:
+			return [self]
+		else:
+			res=[]
+			for ch in self.children:
+				res += ch.leaves
+			return res
+def readTreeFromStream(stream,parent=None):
+	result=stanfordTree(stream.readline().strip(), parent)
+	result.data = stream.readline().strip() or None
+	num_children = int(stream.readline().strip())
+	for _ in range(num_children):
+		readTreeFromStream(stream,result)
+	return result
 def parseText(texts):
 	#NB the stanford parser is VERY BROKEN for it cannot, in combination with the crucial virt-sandbox, properly read data from stdin
 	#UNLESS I, personally, by my own hands, type them into the terminal.
@@ -36,8 +58,16 @@ def parseText(texts):
 		handle.write(bytearray(t, encoding='utf8'))
 		handle.flush()
 		handles.append(handle)
-	command='''/usr/bin/virt-sandbox -- /usr/bin/java -mx150m -cp /home/ego/stylometry-paraphrasing/prog/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
-	proc=subprocess.run(command.split(' ')+[handle.name for handle in handles], stdout=subprocess.PIPE, universal_newlines=True)
+	indexfile=tempfile.NamedTemporaryFile()
+	indexfile.write(bytearray("\n".join(handle.name for handle in handles)+"\n",encoding='utf8'))
+	indexfile.flush()
+	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 20 /usr/bin/java -Xmx6g -mx6g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
+	#NB this is not partable if sys.path[0] or indexfile.name contains a space.
+	#print(command % (indexfile.name,sys.path[0]))
+	proc=subprocess.run((command % (indexfile.name,sys.path[0])).split(' '), stdout=subprocess.PIPE, universal_newlines=True)
+	#command='''/usr/bin/virt-sandbox -- cat'''
+	#proc=subprocess.run((command).split(' '), input="\n".join(handle.name for handle in handles), \
+	#		stdout=subprocess.PIPE, universal_newlines=True)
 	tokens = None
 	pos=None
 	trees=None
@@ -51,15 +81,16 @@ def parseText(texts):
 		if position == -1:
 			break
 		if position > nextParsing and nextParsing != -1:
-			tokens=[]
-			pos=[]
+			#tokens=[]
+			#pos=[]
 			trees=[]
-			results.append( (tokens,pos,trees))
+			results.append(trees)
 			nextParsing = output.find('Parsing file:', position)
-			print('nextParsing looks like this: '+output[nextParsing:nextParsing+100])
+			#print('nextParsing looks like this: '+output[nextParsing:nextParsing+100])
 		tree = stanfordTree('ROOT')
 		trees.append(tree)
 		position += 5
+		treepos=0
 		while tree is not None:
 			while output[position].isspace():
 				position += 1
@@ -73,13 +104,25 @@ def parseText(texts):
 				newpos = output.find(')', position)
 				dat=output[position:newpos].strip()
 				if dat:
-					tree.setPosition(len(tokens))
-					tokens.append(dat)
-					pos.append(tree.label)
+					tree.setPosition(treepos)
+					treepos+=1
+					#tokens.append(dat)
+					#pos.append(tree.label)
 					tree.data=dat
 				else:
 					tree.updateRange()
 				position=newpos+1
 				tree=tree.parent
 	return results
-#print(parseText(['Is this a hash?! Oh, #2 is one. For $60 dollars, 60$ can be given! Would they "quote \'inside\'"? Or; if anything goes: Then this (or this?).']))
+if __name__=="__main__":
+	results=parseText(['Is this a hash?! Oh, #2 is one. For $60 dollars, 60$ can be given! Would they "quote \'inside\'"? Or; if anything goes: Then this (or this?).'])
+	import io
+	stream=io.StringIO()
+	for tree in results[0]:
+		print(tree.__str__())
+		tree.writeStream(stream)
+	stream.seek(0)
+	#print(stream.getvalue())
+	while stream.read(1):
+		stream.seek(stream.tell()-1)
+		print(readTreeFromStream(stream).__str__())
