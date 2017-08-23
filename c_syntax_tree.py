@@ -80,6 +80,18 @@ class syntax_tree:
 		return libsyntax_tree.st_canMatchPattern(pattern.handle, self.handle)
 	def countNodes(self):
 		return libsyntax_tree.st_countNodes(self.handle)
+def copySyntaxTreeFromHandle(handle):
+	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
+		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])
+	result.setExtendable(libsyntax_tree.st_treeGetExtendable(handle))
+	return result
+def copyPatternListFromHandle(handle):
+	result = [None]*libsyntax_tree.st_listGetLength(handle)
+	entry = libsyntax_tree.st_listGetFirstEntry(handle)
+	for i in range(len(result)):
+		result[i] = copySyntaxTreeFromHandle(libsyntax_tree.st_listedGetPattern(entry))
+		entry = libsyntax_tree.st_listedGetNext(entry)
+	return result
 class document:
 	def __init__(self, trees):
 		self.trees=trees
@@ -127,18 +139,25 @@ class documentbase:
 		self.free()
 	def support(self,pattern):
 		return libsyntax_tree.st_support(self.handle,pattern.handle)
-	def conditionalEntropy(self,pattern,n,estimate=True):
-		if not estimate:
-			return libsyntax_tree.st_conditionalEntropy(self.handle,pattern.handle,n,None)
-		est=c_double()
-		print("about to call...")
-		result=libsyntax_tree.st_conditionalEntropy(self.handle,pattern.handle,n,byref(est))
-		print("called.")
-		return (result,est.value)
-
+	def conditionalEntropy(self,pattern,n):
+		return libsyntax_tree.st_conditionalEntropy(self.handle,pattern.handle,n,None)
+	def mineDiscriminativePatterns(self,numLabels,supportLowerBound,n,k):
+		print("create mining state.")
+		state=libsyntax_tree.st_createMiningState(self.handle,numLabels,supportLowerBound,n,k)
+		print("now go for a mine.")
+		lst = libsyntax_tree.st_mine(state)
+		print("mining returned.")
+		result = copyPatternListFromHandle(lst)
+		libsyntax_tree.st_deepFreeList(lst)
+		libsyntax_tree.st_freeMiningState(state)
+		return result
 if __name__ == "__main__":
 	testpattern = syntax_tree(42, [syntax_tree(42, [])])
 	testpattern.print()
 	singledoc = lambda x: document([syntax_tree(x,[])])
 	base = documentbase([documentclass([singledoc(1), singledoc(2)]),documentclass([singledoc(3), singledoc(42)])])
-	print(base.conditionalEntropy(testpattern,10,True))
+	print(base.conditionalEntropy(testpattern,10))
+	result=base.mineDiscriminativePatterns(43,0,10,2)
+	for tree in result:
+		print(tree)
+		tree.print()

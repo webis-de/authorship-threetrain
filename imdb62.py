@@ -4,6 +4,7 @@ import c_syntax_tree as st
 import syntax_tree
 from werkzeug import cached_property
 import faulthandler
+from pos import pos_tags
 faulthandler.enable()
 class review:
 	byReviewer = {}
@@ -87,9 +88,21 @@ def readCache(filename='imdb62_syntaxcache'):
 			reviews[index].readTrees(f)
 def createStDocumentbase(indices=None):
 	selection = reviews if indices is None else [reviews[i] for i in indices]
-	classes = [(reviewer,[rev for rev in selection if rev.stanfordTrees is not None]) for reviewer,reviews in review.byReviewer.items()]
-	classes = [(reviewer,reviews) for reviewer,reviews in classes if reviews]
-	return st.documentbase([st.documentclass([r.stDocument for r in reviews],reviewer) for reviewer,reviews in classes])
+	selection = [sel for sel in selection if sel.stanfordTrees is not None]
+	byReviewer = {}
+	for rev in selection:
+		if rev.revid in byReviewer:
+			byReviewer[rev.revid].append(rev)
+		else:
+			byReviewer[rev.revid] = [rev]
+	#print(review.byReviewer)
+	#print(list(review.byReviewer.items())[:10])
+	classes = [(reviewer,reviews) for (reviewer,reviews) in byReviewer.items() if reviews]
+	#print(classes[:10])
+	#classes = [(reviewer,reviews) for (reviewer,reviews) in classes if reviews]
+	#print(classes[:10])
+	print("%d classes of size" % len(classes), [len(reviews) for (reviewer,reviews) in classes])
+	return st.documentbase([st.documentclass([r.stDocument for r in reviews],reviewer) for (reviewer,reviews) in classes])
 
 loadReviews()
 try:
@@ -99,16 +112,17 @@ except Exception as e:
 	print("Failed to read cache")
 	print(e)
 	loadReviews()
-computeStanfordTrees(range(20))
+indices=list(range(40))+list(range(1000,1040))
+computeStanfordTrees(indices)
 if cacheUpdateNeeded:
 	print("write cache...")
 	writeCache()
 	print("cache written.")
-base=createStDocumentbase()
+base=createStDocumentbase(indices)
 testpattern = st.syntax_tree(16,[]) #particle
 testpattern.setExtendable(True)
 print(base.support(testpattern))
-print(base.conditionalEntropy(testpattern,10,True))
+print(base.conditionalEntropy(testpattern,10))
 doc=reviews[0].stDocument
 print(doc.frequency(testpattern))
 for i,tree in enumerate(doc.trees):
@@ -116,3 +130,7 @@ for i,tree in enumerate(doc.trees):
 		#tree.print()
 		stree = reviews[0].stanfordTrees[i]
 		#print(" ".join(x.data for x in stree.leaves))
+print("now we go for discrimination...")
+result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
+for tree in result:
+	tree.print()
