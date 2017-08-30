@@ -42,22 +42,63 @@ class review:
 			res += [l.data for l in tree.leaves]
 		return res
 	@cached_property
+	def tokenCounts(self):
+		res = {}
+		for tok in self.tokens:
+			if not tok in res:
+				res[tok]=1
+			else:
+				res[tok]+=1
+		return res
+	def characterNGramCounts(self, n):
+		if not hasattr(self,'_cachedCharacerNGramCounts'):
+			self._cachedCharacerNGramCounts = {}
+		if n in self._cachedCharacerNGramCounts:
+			return self._cachedCharacerNGramCounts[n]
+		result = {}
+		self._cachedCharacerNGramCounts[n] = result
+		for tok in self.tokens:
+			for i in range(len(tok)-n):
+				ngram = tok[i:i+n]
+				if ngram in result:
+					result[ngram]+=1
+				else:
+					result[ngram]=1
+		return result
+	@cached_property
 	def pos(self):
 		res = []
 		for tree in self.stanfordTrees:
 			res += [l.label for l in tree.leaves]
 		return res
+	def posNGramCounts(self, n):
+		if not hasattr(self,'_cachedPosNGramCounts'):
+			self._cachedPosNGramCounts = {}
+		if n in self._cachedPosNGramCounts:
+			return self._cachedPosNGramCounts[n]
+		result = {}
+		self._cachedPosNGramCounts[n] = result
+		for i in range(len(self.pos)-n):
+			ngram = tuple(self.pos[i:i+n])
+			if ngram in result:
+				result[ngram]+=1
+			else:
+				result[ngram]=1
+		return result
 	@cached_property
 	def stDocument(self):
 		return st.document([syntax_tree.stanfordTreeToStTree(t) for t in self.stanfordTrees])
 reviews=[]
+reviewers=[]
 cacheUpdateNeeded=False
 def loadReviews():
-	global reviews
+	global reviews,reviewers
 	reviews=[]
-	for line in open("imdb62.txt"):
-		line = line.split('\t')
-		reviews.append(review(int(line[0]), int(line[1]), int(line[2]), float(line[3]), line[4], line[5]))
+	with open("imdb62.txt") as f:
+		for line in f:
+			line = line.split('\t')
+			reviews.append(review(int(line[0]), int(line[1]), int(line[2]), float(line[3]), line[4], line[5]))
+	reviewers = list(review.byReviewer)
 def computeStanfordTrees(indices,overwrite=False):
 	global cacheUpdateNeeded
 	if not overwrite:
@@ -67,17 +108,22 @@ def computeStanfordTrees(indices,overwrite=False):
 	cacheUpdateNeeded=True
 	texts = [reviews[i].content for i in indices]
 	results = stanford_parser.parseText(texts)
-	assert(len(results) == len(indices))
+	if len(results) != len(indices):
+		raise Exception("Got %d results for %d texts." % (len(results), len(texts)))
 	for i,trees in zip(indices,results):
 		print("call setStanfordTrees for #%d" % i)
 		reviews[i].setStanfordTrees(trees)
-def writeCache(filename='imdb62_syntaxcache'):
+def writeCache(filename='imdb62_syntaxcache',checkIfNeeded=True):
+	global cacheUpdateNeeded
+	if checkIfNeeded and not cacheUpdateNeeded:
+		return
 	with open(filename,'wt',encoding='utf8') as f:
 		for i,rev in enumerate(reviews):
 			if rev.stanfordTrees is not None:
 				print("write cache for review #%d" % i)
 				f.write(str(i)+"\n")
 				rev.writeTrees(f)
+	cacheUpdateNeeded=False
 def readCache(filename='imdb62_syntaxcache'):
 	with open(filename,'rt',encoding='utf8') as f:
 		while True:
@@ -107,30 +153,35 @@ def createStDocumentbase(indices=None):
 loadReviews()
 try:
 	readCache()
-	print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
+	#print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
 except Exception as e:
 	print("Failed to read cache")
 	print(e)
 	loadReviews()
-indices=list(range(40))+list(range(1000,1040))
-computeStanfordTrees(indices)
-if cacheUpdateNeeded:
-	print("write cache...")
-	writeCache()
-	print("cache written.")
-base=createStDocumentbase(indices)
-testpattern = st.syntax_tree(16,[]) #particle
-testpattern.setExtendable(True)
-print(base.support(testpattern))
-print(base.conditionalEntropy(testpattern,10))
-doc=reviews[0].stDocument
-print(doc.frequency(testpattern))
-for i,tree in enumerate(doc.trees):
-	if tree.patternOccurs(testpattern):
-		#tree.print()
-		stree = reviews[0].stanfordTrees[i]
-		#print(" ".join(x.data for x in stree.leaves))
-print("now we go for discrimination...")
-result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
-for tree in result:
-	tree.print()
+if __name__ == '__main__':
+	indices=list(range(40))+list(range(1000,1040))
+	computeStanfordTrees(indices)
+	if cacheUpdateNeeded:
+		print("write cache...")
+		writeCache()
+		print("cache written.")
+	base=createStDocumentbase(indices)
+	testpattern = st.syntax_tree(16,[]) #particle
+	testpattern.setExtendable(True)
+	print(base.support(testpattern))
+	print(base.conditionalEntropy(testpattern,10))
+	doc=reviews[0].stDocument
+	print(doc.frequency(testpattern))
+	for i,tree in enumerate(doc.trees):
+		if tree.patternOccurs(testpattern):
+			#tree.print()
+			stree = reviews[0].stanfordTrees[i]
+			#print(" ".join(x.data for x in stree.leaves))
+	print("now we go for discrimination...")
+	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
+	print("got %d discriminative patterns." % len(result))
+	for pattern in result:
+		print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
+		pattern.nicePrint()
+		pattern.print()
+

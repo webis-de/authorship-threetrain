@@ -1,7 +1,8 @@
 from ctypes import CDLL, byref, c_bool, c_char, c_wchar, c_byte, c_ubyte, c_short, c_ushort, c_int, c_uint, c_long, c_ulong, c_longlong, c_ulonglong, c_size_t, c_ssize_t, c_float, c_double, c_longdouble, c_char_p, c_wchar_p, c_void_p
-import sys
+import os
 import re
-libsyntax_tree = CDLL(sys.path[0]+"/libsyntax_tree.so")
+import pos
+libsyntax_tree = CDLL(os.path.dirname(os.path.abspath(__file__))+"/libsyntax_tree.so")
 regex=re.compile("(.*\W)(\w+)\s*\((.*)\);\s")
 ctypes_translation = {
 '_Bool': c_bool,
@@ -80,6 +81,14 @@ class syntax_tree:
 		return libsyntax_tree.st_canMatchPattern(pattern.handle, self.handle)
 	def countNodes(self):
 		return libsyntax_tree.st_countNodes(self.handle)
+	def nicePrint(self,indent=''):
+		line=indent
+		if self.extendable:
+			line += '...'
+		line += '('+pos.pos_tags[self.label]+')'
+		print(line)
+		for ch in self.children:
+			ch.nicePrint(indent+'  ')
 def copySyntaxTreeFromHandle(handle):
 	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
 		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])
@@ -148,16 +157,20 @@ class documentbase:
 		lst = libsyntax_tree.st_mine(state)
 		print("mining returned.")
 		result = copyPatternListFromHandle(lst)
-		libsyntax_tree.st_deepFreeList(lst)
 		libsyntax_tree.st_freeMiningState(state)
+		libsyntax_tree.st_shallowFreeList(lst)
 		return result
 if __name__ == "__main__":
 	testpattern = syntax_tree(42, [syntax_tree(42, [])])
 	testpattern.print()
+	testpattern.nicePrint()
 	singledoc = lambda x: document([syntax_tree(x,[])])
-	base = documentbase([documentclass([singledoc(1), singledoc(2)]),documentclass([singledoc(3), singledoc(42)])])
+	extradoc1 = document([syntax_tree(42, [syntax_tree(1, [])])])
+	extradoc2 = document([syntax_tree(42, [syntax_tree(2, [])])])
+	base = documentbase([documentclass([singledoc(1), singledoc(2), extradoc1]),documentclass([singledoc(3), extradoc2, singledoc(42)])])
 	print(base.conditionalEntropy(testpattern,10))
 	result=base.mineDiscriminativePatterns(43,0,10,2)
+	print("got %d discriminative patterns." % len(result))
 	for tree in result:
 		print(tree)
 		tree.print()

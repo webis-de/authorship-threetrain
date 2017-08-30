@@ -6,8 +6,8 @@
 typedef int st_label;
 #define TREEFLAG_EXTENDABLE_EDGE 1
 #define TREEFLAG_PACKED_CHILDREN 2
-#define TREEFLAG_ALREADY_MENTIONED 4
-#define TREEFLAG_CANDIDATE 8
+//#define TREEFLAG_ALREADY_MENTIONED 4
+#define TREEFLAG_CANDIDATE 4
 #define VALIDATE_EMBEDDINGS
 struct st_syntax_tree {
 	st_label label;
@@ -85,7 +85,7 @@ void st_printTree(const st_tree* t, unsigned int level) {
 st_label st_treeGetLabel(const st_tree* tree){return tree->label;}
 unsigned int st_treeNumOfChildren(const st_tree* tree) {return tree->num_children;}
 st_tree* st_treeGetChild(const st_tree* tree,unsigned int index) {return tree->children[index];}
-_Bool st_treeGetExtendable(const st_tree* tree){return (tree->flags & TREEFLAG_EXTENDABLE_EDGE)==0;}
+_Bool st_treeGetExtendable(const st_tree* tree){return (tree->flags & TREEFLAG_EXTENDABLE_EDGE)!=0;}
 _Bool st_canMatchPattern(const st_tree* pattern, const st_tree* tree) {
 	if (pattern->label == tree->label) {
 		int pchildnum, tchildnum;
@@ -155,7 +155,7 @@ void st_documentSetTree(st_document* doc, unsigned int index, st_tree* const tre
 unsigned int st_occuringTrees(const st_tree* pattern, const st_document* doc) {
 	unsigned int result = 0,i;
 	for (i=0; i < doc->num_trees; i++) {
-		if (st_canMatchPattern(pattern, ((st_tree**) (void*) (doc+1))[i])) result++;
+		if (st_canMatchPattern(pattern, ((st_tree**) (doc+1))[i])) result++;
 	}
 	return result;
 }
@@ -229,12 +229,14 @@ double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern
 			frequencyMatrix[index*base->num_classes+i]++;
 		}
 	}
+	/*
 	for (j=0;j<n;j++) {
 		for (i=0;i<base->num_classes;i++) {
 			printf("%d ",frequencyMatrix[j*base->num_classes+i]);
 		}
 		printf("\n");
 	}
+	*/
 	double result=0;
 	double dinv = 1.0/((double) base->num_documents);
 	for (i=0; i<n; i++) {
@@ -260,17 +262,19 @@ double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern
 				double entry=frequencyMatrix[j];
 				if (entry != 0) val -= entry * log(entry/total);
 			}
-			printf("val: %f\n", val);
+			//printf("val: %f\n", val);
 			if (i==0 || val<min) min=val;
 			total -= extra;
 			frequencyMatrix[i] -= extra;
 		}
-		printf("min: %f\n", min);
+		//printf("min: %f\n", min);
 		*lowerBound = min*dinv;
+		/*
 		if (result > *lowerBound) {
 			printf("ERROR detected.\n");
 			*lowerBound /= result-result;
 		}
+		*/
 	}
 	free(frequencyMatrix);
 	return result;
@@ -294,6 +298,7 @@ _Bool st_isValidEmbedding(const st_documentbase* base, const st_tree* pattern, c
 		st_document* document = ((st_document**) (class+1))[embedding->documentIndex];
 		if (embedding->sentenceIndex >= document->num_trees  ||
 			(embedding->classIndex == lc && embedding->documentIndex == ld && embedding->sentenceIndex < ls)) return false;
+		if (!st_canMatchPattern(pattern, ((st_tree**) (document+1))[embedding->sentenceIndex])) return false;
 		unsigned int i=0;
 		const st_tree* node = pattern;
 		while (true) {
@@ -414,6 +419,17 @@ void st_deepCleanupList(st_patternList* list) {
 }
 void st_deepFreeList(st_patternList* list) {
 	st_deepCleanupList(list);
+	free(list);
+}
+void st_shallowFreeList(st_patternList* list) {
+	//frees everything besides the patterns and embeddings
+	st_listedPattern* link;
+	link=list->first;
+	while (link != NULL) {
+		st_listedPattern* tmp=link;
+		link=link->succ;
+		free(tmp);
+	}
 	free(list);
 }
 unsigned int st_listGetLength(const st_patternList* list){return list->length;}
@@ -675,7 +691,9 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 	double entropy = st_econditionalEntropy(state->base, state->n, &estimate, embedding);
 	_Bool candidate=false;
 	st_patternEmbedding* emb;
+	unsigned int num_embeddings=0;
 	for (emb = embedding; emb != NULL; emb = emb->next) {
+		num_embeddings++;
 		//st_validateState(state);
 		st_patternList* bestKnown = state->bestKnown[emb->classIndex][emb->documentIndex][emb->sentenceIndex];
 		if (bestKnown->last != NULL && bestKnown ->last->pattern == pattern) continue;
@@ -737,7 +755,7 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 		//if (pattern==NULL) pattern=st_expandPatternRight(oldPattern, position, label, embeddable);
 		printf("We insert the following pattern:\n");
 		st_printTree(pattern, 0);
-		printf("entropy: %f, estimated: %f.\n", entropy, estimate);
+		printf("entropy: %f, estimated: %f, embeddings: %u.\n", entropy, estimate, num_embeddings);
 		st_patternListInsertLast(state->candidates, pattern, num_embedded_edges, embedding);
 		pattern->flags |= TREEFLAG_CANDIDATE;
 	} else {
@@ -799,7 +817,16 @@ void st_freeMiningState(st_miningState* state) { // frees all beside state->base
 			for (k=0; k<document->num_trees; k++) {
 				//st_deepFreeList(documentBestKnown[k]);
 				st_patternList* list = documentBestKnown[k];
-				while (list->length > 0) st_patternListRemoveFirst(list);
+				while (list->length > 0) {
+					st_tree* pattern = list->first->pattern;
+					if (pattern->bestKnownRefcount <= 1) {
+						st_freeTree(pattern);
+						st_recursiveFreeEmbedding(list->first->embedding);
+					} else {
+						pattern->bestKnownRefcount--;
+					}
+					st_patternListRemoveFirst(list);
+				}
 				free(list);
 			}
 			free(documentBestKnown);
@@ -879,9 +906,8 @@ void st_expandPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 			if (waitChild != NULL) {
 				if (node->children[i] == waitChild) {
 					waitChild=NULL;
-				} else {
-					continue;
 				}
+				continue;
 			}
 			st_expandEmbedding(node->children[i], emb, position, expandedEmbeddings, lastEmbedding, embeddable);
 
@@ -921,6 +947,29 @@ void st_expandPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 	}
 	free(expandedEmbeddings);
 	free(lastEmbedding);
+}
+_Bool st_indistinguishablePatterns(const st_patternEmbedding* embedding1, const st_patternEmbedding* embedding2) {
+	//two patterns are indistinguishable if they match exactly the same trees
+	unsigned int lc1=-1,ld1=-1,ls1=-1,lc2=-1,ld2=-1,ls2=-1;
+	while (true) {
+		if (embedding1 == NULL) return (embedding2 == 0);
+		if (embedding2 == NULL) return false;
+		if (embedding1->classIndex != embedding2->classIndex ||
+			embedding1->documentIndex != embedding2->documentIndex ||
+			embedding1->sentenceIndex != embedding2->sentenceIndex) return false;
+		lc1=embedding1->classIndex;
+		ld1=embedding1->documentIndex;
+		ls1=embedding1->sentenceIndex;
+		while (embedding1 != NULL && embedding1->classIndex == lc1 && embedding1->documentIndex == ld1 && embedding1->sentenceIndex == ls1) {
+			embedding1 = embedding1->next;
+		}
+		lc2=embedding2->classIndex;
+		ld2=embedding2->documentIndex;
+		ls2=embedding2->sentenceIndex;
+		while (embedding2 != NULL && embedding2->classIndex == lc2 && embedding2->documentIndex == ld2 && embedding2->sentenceIndex == ls2) {
+			embedding2 = embedding2->next;
+		}
+	}
 }
 st_patternList* st_mine(st_miningState* state) {
 	printf("start mining...\n");
@@ -968,18 +1017,30 @@ st_patternList* st_mine(st_miningState* state) {
 				st_patternList* list = documentBestKnown[k];
 				st_listedPattern* entry;
 				for (entry = list->first; entry != NULL; entry = entry->succ) {
-					if ( (entry->pattern->flags & TREEFLAG_ALREADY_MENTIONED) == 0) {
+					//search whether entry already occurs or is indistinguishable from an occuring pattern.
+					st_listedPattern* listed;
+					_Bool insert=true;
+					for (listed = result->first; listed != NULL; listed = listed->succ) {
+						if (entry->pattern == listed->pattern || st_indistinguishablePatterns(entry->embedding, listed->embedding)) {
+							insert=false;
+							break;
+						}
+					}
+					if ( insert ) {
 						st_patternListInsertLast(result, entry->pattern, entry->num_embedded_edges, entry->embedding);
-						entry->pattern->flags |= TREEFLAG_ALREADY_MENTIONED;
 					}
 				}
 			}
 		}
 	}
+	/*
 	st_listedPattern* entry;
+	//printf("mined %u patterns.\n", result->length);
 	for (entry=result->first; entry != NULL; entry=entry->succ) {
 		entry->pattern->flags &= ~TREEFLAG_ALREADY_MENTIONED;
+		//st_printTree(entry->pattern, 0);
 	}
+	*/
 	return result;
 
 }

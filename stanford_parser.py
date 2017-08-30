@@ -61,10 +61,14 @@ def parseText(texts):
 	indexfile=tempfile.NamedTemporaryFile()
 	indexfile.write(bytearray("\n".join(handle.name for handle in handles)+"\n",encoding='utf8'))
 	indexfile.flush()
-	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 20 /usr/bin/java -Xmx6g -mx6g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
+	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 1 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
 	#NB this is not partable if sys.path[0] or indexfile.name contains a space.
 	#print(command % (indexfile.name,sys.path[0]))
-	proc=subprocess.run((command % (indexfile.name,sys.path[0])).split(' '), stdout=subprocess.PIPE, universal_newlines=True)
+	mypath=os.path.dirname(os.path.abspath(__file__))
+	#print(command % (indexfile.name,mypath))
+	#from os import system
+	#system(command % (indexfile.name,sys.path[0]))
+	proc=subprocess.run((command % (indexfile.name,mypath)).split(' '), stdout=subprocess.PIPE, universal_newlines=True)
 	#command='''/usr/bin/virt-sandbox -- cat'''
 	#proc=subprocess.run((command).split(' '), input="\n".join(handle.name for handle in handles), \
 	#		stdout=subprocess.PIPE, universal_newlines=True)
