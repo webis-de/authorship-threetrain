@@ -1,0 +1,44 @@
+Overview
+========
+
+Authorship attribution (or more specifially: closed class authorship attribution) is the task to
+identify the author of a given text by comparing it to other texts of various authors.
+The quality of author attribution hinges on the number of known texts for each author:
+Generally, a large number is needed to perform high quality author attribution, but it is seldom available
+in realistic scenarios.
+The paper [1] provides an algorithm to overcome this issue by adding a large number of unlabelled documents
+(i.e. further texts, for which the author is not known). By attributing authors to these
+unlabelled documents, the training set is increased and the results get improved.
+This algorithm is implemented in the file threetrain.py.
+
+In order to examine the texts, a syntactic analysis of the sentences is reqired. For this, the stanford NLP-parser
+(https://nlp.stanford.edu/software/lex-parser.shtml) is called. It should be installed in the subdirectory
+stanford-parser-full-2017-06-09.zip.
+The file stanford_parser.py provides python bindings to this parser for our purposes.
+Since there seems to be no way to verify the downloaded NLP software, it is recommended to run it only
+in a disposable virtual machine for security reasons. The libvirt sandbox (http://sandbox.libvirt.org/)
+provides such disposable virtual machines, which is used by default. This security measure can be
+removed by erasing 'virt-sandbox ' in stanford_parser.py. The virtual machines of libvirt sandbox usually come
+with little memory which is unsuited for large-scale parsing.
+
+Some of the syntactic features used to analyze documents are the "rewrite rules" (as the authors of [1] call it)
+or "k-ee-subtrees" (as the authors of [3] call it). The algorithms to generate these features are described in [3]
+and implemented in syntax_tree.c (not in python for performance reasons). This file has to be compiled to a shared object,
+libsyntax_tree.so to which python bindings are available as c_syntax_tree.py. A makefile is provided.
+
+In order to assign authors to documents, L2-regularized linear regression is used. The package LIBLINEAR
+only provides this regression type for two classes (i.e. two authors). A simple extension to an arbitrary finite
+number of authors is available as regression.py.
+
+We use the same dataset as in [1] (which is taken from [2] can can be downloaded from https://yanirseroussi.com/phd-work/).
+It consists of movie reviews from the page imdb.com. The dataset consists of 62000 reviews from 62 authors (1000 per author).
+The file imdb62.py loads and prepares these reviews.
+
+When all prerequisites are met, calling threeview.py will compute the syntactic structure of 8*40 documents and
+run the tri-training-algorihm on them with 10 documents per author labelled, 20 unlabelled and 10 used to test the performance.
+
+References
+==========
+[1] Qian et al.: Tri-Training for Authorship Attribution with Limited Training Data. Proceedings of the 52nd Annual Meeting of the Association for Computational Linguistics (Short Papers), 2014
+[2] Yanir Seroussi et al. Collaborative inference of sentiments from texts. UMAP, 2010
+[3] S. Kim et al: Authorship classification: a discriminative syntactic tree mining approach. SIGIR, 2011
