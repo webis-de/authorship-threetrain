@@ -170,24 +170,27 @@ class documentbase:
 		print("now go for a mine.")
 		#lst = libsyntax_tree.st_mine(state)
 		libsyntax_tree.st_populateMiningState(state)
-		numIterations = 1000*timeBetweenSyncs
-		while libsyntax_tree.st_numCandidates(state) != 0:
-			print("numIterations: %f, remaining %u candidates"%(numIterations,libsyntax_tree.st_numCandidates(state)))
-			if numIterations > 2**20:
-				numIterations = 2**20
-			elif numIterations < 2:
-				numIterations = 2
-			split = libsyntax_tree.st_splitupState(state,num_processes)
-			libsyntax_tree.st_freeMiningState(state)
-			startTime = time.perf_counter()
-			libsyntax_tree.st_doParallelMiningIterations(split, int(numIterations))
-			neededTime = time.perf_counter()-startTime
-			state = libsyntax_tree.st_mergeStates(split)
-			if neededTime != 0:
-				numIterations *= (timeBetweenSyncs/neededTime)**0.8
-		'''
-		libsyntax_tree.st_doMiningIterations(state,-1)
-				'''
+		if num_processes > 1:
+			numIterations = 1000*timeBetweenSyncs
+			while libsyntax_tree.st_numCandidates(state) != 0:
+				print("numIterations: %f, remaining %u candidates"%(numIterations,libsyntax_tree.st_numCandidates(state)))
+				if numIterations > 2**20:
+					numIterations = 2**20
+				elif numIterations < 2:
+					numIterations = 2
+				split = libsyntax_tree.st_splitupState(state,num_processes)
+				libsyntax_tree.st_freeMiningState(state)
+				startTime = time.perf_counter()
+				libsyntax_tree.st_doParallelMiningIterations(split, int(numIterations))
+				neededTime = time.perf_counter()-startTime
+				state = libsyntax_tree.st_mergeStates(split)
+				if neededTime != 0:
+					numIterations *= (timeBetweenSyncs/neededTime)**0.8
+			'''
+			libsyntax_tree.st_doMiningIterations(state,-1)
+					'''
+		else:
+			libsyntax_tree.st_doMiningIterations(state,-1)
 		lst = libsyntax_tree.st_getDiscriminativePatterns(state)
 		print("mining returned.")
 		result = copyPatternListFromHandle(lst)

@@ -3,10 +3,10 @@ import stanford_parser
 import c_syntax_tree as st
 import syntax_tree
 from werkzeug import cached_property
-import faulthandler
 from pos import pos_tags
 import gc
-faulthandler.enable()
+#import faulthandler
+#faulthandler.enable()
 class review:
 	byReviewer = {}
 	def __init__(self, identifier, revid, itemid, rating, title, content):
@@ -178,12 +178,11 @@ if __name__ == '__main__':
 			#tree.print()
 			stree = reviews[0].stanfordTrees[i]
 			#print(" ".join(x.data for x in stree.leaves))
-	for _ in range(10):
-		result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2,num_processes=4)
-		print("got %d discriminative patterns." % len(result))
-		for pattern in result:
-			print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
-			pattern.nicePrint()
-			pattern.print()
-		gc.collect()
+	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
+	print("got %d discriminative patterns." % len(result))
+	for pattern in result:
+		print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
+		pattern.nicePrint()
+		pattern.print()
+	gc.collect()
 
