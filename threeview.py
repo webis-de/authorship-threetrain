@@ -110,7 +110,7 @@ class syntacticView(view):
 			features.append(posNGramFeature(n,list(values)))
 		#posFeature = posNGramFeature(posNgrams)
 		base = imdb62.createStDocumentbase(indices)
-		keeFeature = keeSubtreeFeature(base.mineDiscriminativePatterns(len(pos_tags), self.supportLowerBound, self.n, self.k))
+		keeFeature = keeSubtreeFeature(base.mineDiscriminativePatterns(len(pos_tags), self.supportLowerBound, self.n, self.k, num_processes=2))
 		features.append(keeFeature)
 		return combinedFeature(features)
 		#return keeFeature

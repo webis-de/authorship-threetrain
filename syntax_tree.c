@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <math.h>
+#include <pthread.h>
 typedef int st_label;
 #define TREEFLAG_EXTENDABLE_EDGE 1
 #define TREEFLAG_PACKED_CHILDREN 2
@@ -11,11 +12,13 @@ typedef int st_label;
 #define VALIDATE_EMBEDDINGS
 struct st_syntax_tree {
 	st_label label;
-	struct st_syntax_tree* parent;
 	unsigned int num_children;
 	struct st_syntax_tree** children;
 	int flags;
 	unsigned int bestKnownRefcount;
+	struct st_syntax_tree* copyUsedDuringSplitup;
+	void* embeddingUsedDuringSplitup;
+	struct st_syntax_tree* original;
 };
 typedef struct st_syntax_tree st_tree;
 void st_freeTree(st_tree* t) {
@@ -31,31 +34,31 @@ void st_shallowFreeTree(st_tree* t) {
 	free(t);
 }
 st_tree* st_createTree(st_label label, unsigned int num_children, st_tree** children) {
-	int i;
 	st_tree* result = (st_tree*) malloc(sizeof(st_tree));
 	result->label=label;
-	result->parent=NULL;
 	result->num_children=num_children;
 	result->flags=0;
-	result->bestKnownRefcount = 0;
+	result->bestKnownRefcount=0;
+	result->copyUsedDuringSplitup=NULL;
+	result->embeddingUsedDuringSplitup=NULL;
+	result->original=NULL;
 	if (num_children != 0) {
 		result->children=children;
 	} else {
 		result->children=NULL;
-	}
-	for (i=0;i<num_children;i++) {
-		children[i]->parent = result;
 	}
 	return result;
 }
 st_tree* st_prepareTree(st_label label, unsigned int num_children) {
 	st_tree* result = (st_tree*) malloc(sizeof(st_tree) + sizeof(st_tree*) * num_children);
 	result->label=label;
-	result->parent = NULL;
 	result->num_children = num_children;
-	result->bestKnownRefcount = 0;
+	result->bestKnownRefcount=0;
+	result->copyUsedDuringSplitup=NULL;
+	result->embeddingUsedDuringSplitup=NULL;
+	result->original=NULL;
 	if (num_children >0) {
-		result->children = (void*) ((char*) result) + sizeof(st_tree);
+		result->children = (st_tree**) (result+1);
 	} else {
 		result->children = NULL;
 	}
@@ -64,7 +67,6 @@ st_tree* st_prepareTree(st_label label, unsigned int num_children) {
 }
 void st_setTreeChild(st_tree* parent, unsigned int index, st_tree* child) {
 	parent->children[index]=child;
-	child->parent = parent;
 }
 void st_setTreeExtendable(st_tree* tree, _Bool isExtendable) {
 	if (isExtendable) {
@@ -133,8 +135,8 @@ st_tree* st_deepCopyTree(const st_tree* tree) {
 	for (i=0; i<tree->num_children;i++) {
 		st_tree* ch = st_deepCopyTree(tree->children[i]);
 		result->children[i]=ch;
-		ch->parent=result;
 	}
+	result->bestKnownRefcount = tree->bestKnownRefcount;
 	return result;
 }
 typedef struct {
@@ -303,8 +305,11 @@ _Bool st_isValidEmbedding(const st_documentbase* base, const st_tree* pattern, c
 		const st_tree* node = pattern;
 		while (true) {
 			if (node->label != embedding->rightPath[i]->label) return false;
-			if (i>0 && (node->flags & TREEFLAG_EXTENDABLE_EDGE) == 0 && embedding->rightPath[i]->parent != embedding->rightPath[i-1]) {
-				return false;
+			if (i>0 && (node->flags & TREEFLAG_EXTENDABLE_EDGE) == 0) {
+				st_tree* parent = embedding->rightPath[i-1];
+				if (parent->children[parent->num_children-1] != embedding->rightPath[i]) {
+					return false;
+				}
 			}
 			if (node->num_children == 0) break;
 			i=i+1;
@@ -325,6 +330,26 @@ void st_validateEmbedding(const st_documentbase* base, const st_tree* pattern, c
 		_ = _/_;
 	}
 #endif
+}
+unsigned int st_rightPathLength(const st_tree* pattern) {
+	unsigned int result = 1;
+	while (pattern->num_children >0) {
+		result++;
+		pattern=pattern->children[pattern->num_children-1];
+	}
+	return result;
+}
+st_patternEmbedding* st_copyPatternEmbedding(const st_tree* pattern, const st_patternEmbedding* embedding) {
+	if (embedding==NULL) return NULL;
+	st_patternEmbedding* result = malloc(sizeof(st_patternEmbedding));
+	result->classIndex = embedding->classIndex;
+	result->documentIndex = embedding->documentIndex;
+	result->sentenceIndex = embedding->sentenceIndex;
+	unsigned int length = st_rightPathLength(pattern);
+	result->rightPath = malloc(sizeof(st_tree*) * length);
+	memcpy(result->rightPath, embedding->rightPath, sizeof(st_tree*)*length);
+	result->next = st_copyPatternEmbedding(pattern,embedding->next);
+	return result;
 }
 struct st_patternListEntry {
 	st_tree* pattern;
@@ -394,6 +419,20 @@ void st_patternListRemoveLast(st_patternList* list) {
 	free(link);
 	list->length--;
 }
+void st_patternListRemoveListed(st_patternList* list, st_listedPattern* remove) {
+	if (list->first == remove) {
+		list->first = remove->succ;
+	} else {
+		remove->pred->succ = remove->succ;
+	}
+	if (list->last == remove) {
+		list->last = remove->pred;
+	} else {
+		remove->succ->pred = remove->pred;
+	}
+	free(remove);
+	list->length--;
+}
 void st_recursiveFreeEmbedding(st_patternEmbedding* embedding) {
 	while (embedding != NULL) {
 		//printf("about to free embedding in class %u, document %u, sentence %u\n", embedding->classIndex, embedding->documentIndex, embedding->sentenceIndex);
@@ -408,6 +447,7 @@ void st_deepCleanupList(st_patternList* list) {
 	link=list->first;
 	while (link != NULL) {
 		st_freeTree(link->pattern);
+		//printf("free the candidate %p.\n", link->pattern);
 		st_recursiveFreeEmbedding(link->embedding);
 		st_listedPattern* tmp=link;
 		link=link->succ;
@@ -682,6 +722,7 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 	*/
 	if (st_esupport(state->base, embedding) < state->supportLowerBound) {
 		st_freeTree(pattern);
+		//printf("free the candidate %p.\n", pattern);
 		st_recursiveFreeEmbedding(embedding);
 		return;
 	}
@@ -697,7 +738,10 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 		//st_validateState(state);
 		st_patternList* bestKnown = state->bestKnown[emb->classIndex][emb->documentIndex][emb->sentenceIndex];
 		if (bestKnown->last != NULL && bestKnown ->last->pattern == pattern) continue;
-		//printf("iterate embedding in class %u, document %u, sentence %u.\n",emb->classIndex, emb->documentIndex, emb->sentenceIndex);
+		/*
+		printf("iterate embedding in class %u, document %u, sentence %u.\n",emb->classIndex, emb->documentIndex, emb->sentenceIndex);
+		printf("entropy: %f, estimate: %f, cached: %f\n", entropy, estimate, bestKnown->cachedEntropy);
+		*/
 		_Bool insert=false;
 		if (bestKnown->length == 0) {
 			insert=true;
@@ -720,6 +764,7 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 				}*/
 				if (entry->pattern->bestKnownRefcount <= 1 && (entry->pattern->flags & TREEFLAG_CANDIDATE) == 0) {
 					st_freeTree(entry->pattern);
+					//printf("free the candidate %p.\n", entry->pattern);
 					st_recursiveFreeEmbedding(entry->embedding);
 				} else {
 					entry->pattern->bestKnownRefcount--;
@@ -753,13 +798,17 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 	//printf("\n");
 	if (candidate) {
 		//if (pattern==NULL) pattern=st_expandPatternRight(oldPattern, position, label, embeddable);
+		/*
 		printf("We insert the following pattern:\n");
 		st_printTree(pattern, 0);
 		printf("entropy: %f, estimated: %f, embeddings: %u.\n", entropy, estimate, num_embeddings);
+		*/
 		st_patternListInsertLast(state->candidates, pattern, num_embedded_edges, embedding);
 		pattern->flags |= TREEFLAG_CANDIDATE;
+		//printf("insert the candidate %p.\n", pattern);
 	} else {
 		st_freeTree(pattern);
+		//printf("free the candidate (instead of insert) %p.\n", pattern);
 		st_recursiveFreeEmbedding(embedding);
 	}
 	//st_validateState(state);
@@ -788,7 +837,6 @@ void st_insertSingletonCandidate(st_miningState* state, st_label label) {
 	st_patternEmbedding* embedding = NULL;
 	int classIndex, documentIndex, sentenceIndex;
 	for (classIndex = state->base->num_classes-1; classIndex >= 0; classIndex--) {
-		printf("search for embeddings of %d in class %u\n", label, classIndex);
 		st_documentclass* class = ((st_documentclass**)(state->base+1))[classIndex];
 		for (documentIndex = class->num_documents-1; documentIndex >= 0; documentIndex--) {
 			st_document* document = ((st_document**)(class+1))[documentIndex];
@@ -806,6 +854,16 @@ void st_populateMiningState(st_miningState* state) {
 	for (i=0; i<state->numLabels;i++) st_insertSingletonCandidate(state, i);
 }
 void st_freeMiningState(st_miningState* state) { // frees all beside state->base
+	st_listedPattern* listed;
+	for (listed=state->candidates->first;listed!=NULL;) {
+		if (listed->pattern->bestKnownRefcount == 0) {
+			//printf("free the candidate %p.\n", listed->pattern);
+			st_freeTree(listed->pattern);
+			st_recursiveFreeEmbedding(listed->embedding);
+		}
+		listed=listed->succ;
+	}
+	st_shallowFreeList(state->candidates);
 	unsigned int i,j,k;
 	for (i=0; i<state->base->num_classes; i++) {
 		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
@@ -821,6 +879,7 @@ void st_freeMiningState(st_miningState* state) { // frees all beside state->base
 					st_tree* pattern = list->first->pattern;
 					if (pattern->bestKnownRefcount <= 1) {
 						st_freeTree(pattern);
+						//printf("free the candidate %p.\n", pattern);
 						st_recursiveFreeEmbedding(list->first->embedding);
 					} else {
 						pattern->bestKnownRefcount--;
@@ -834,7 +893,7 @@ void st_freeMiningState(st_miningState* state) { // frees all beside state->base
 		free(classBestKnown);
 	}
 	free(state->bestKnown);
-	st_deepFreeList(state->candidates);
+	//st_deepFreeList(state->candidates);
 	free(state);
 }
 void st_expandEmbedding(st_tree* node, st_patternEmbedding* embedding, unsigned int position,
@@ -971,17 +1030,15 @@ _Bool st_indistinguishablePatterns(const st_patternEmbedding* embedding1, const 
 		}
 	}
 }
-st_patternList* st_mine(st_miningState* state) {
-	printf("start mining...\n");
-	st_populateMiningState(state);
-	unsigned int i,j,k;
+_Bool st_doMiningIterations(st_miningState* state, unsigned int num_iterations) {
+	//returns true if these iterations were sufficient or false if there are candidates remaining
 	st_validateState(state);
-	while (state->candidates->length > 0) {
-		printf("New mining iteration, we have %u candidates remaining.\n", state->candidates->length);
+	while (state->candidates->length > 0 && (num_iterations == -1 || num_iterations-- > 0)) {
 		//st_listedPattern* cand;
 		//for (cand = state->candidates->first; cand != NULL; cand = cand->succ) st_printTree(cand->pattern,0);
 		st_listedPattern* entry = state->candidates->first;
 		st_tree* pattern=entry->pattern;
+		//printf("consider this candidate pattern:\n");st_printTree(pattern,0);
 		st_patternEmbedding* embedding=entry->embedding;
 		st_validateEmbedding(state->base, pattern, embedding);
 		unsigned int num_embedded_edges = entry->num_embedded_edges;
@@ -1000,10 +1057,15 @@ st_patternList* st_mine(st_miningState* state) {
 		pattern->flags &= ~TREEFLAG_CANDIDATE;
 		if (pattern->bestKnownRefcount == 0) {
 			st_freeTree(pattern);
+			//printf("free the candidate %p.\n", pattern);
 			st_recursiveFreeEmbedding(embedding);
 		}
 	}
-	st_validateState(state);
+	return state->candidates->length==0;
+}
+st_patternList* st_getDiscriminativePatterns(st_miningState* state) {
+	//prereq: state must be fully mined.
+	unsigned int i,j,k;
 	st_patternList* result = st_createEmptyPatternList();
 	for (i=0; i<state->base->num_classes; i++) {
 		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
@@ -1033,6 +1095,13 @@ st_patternList* st_mine(st_miningState* state) {
 			}
 		}
 	}
+	return result;
+}
+st_patternList* st_mine(st_miningState* state) {
+	//printf("start mining...\n");
+	st_populateMiningState(state);
+	st_doMiningIterations(state, -1);
+	st_validateState(state);
 	/*
 	st_listedPattern* entry;
 	//printf("mined %u patterns.\n", result->length);
@@ -1041,8 +1110,329 @@ st_patternList* st_mine(st_miningState* state) {
 		//st_printTree(entry->pattern, 0);
 	}
 	*/
+	return st_getDiscriminativePatterns(state);
+}
+unsigned int st_numCandidates(const st_miningState* state) {
+	return state->candidates->length;
+}
+void st_appendPatternList(st_patternList* list1, st_patternList* list2) {
+	//destroys list2 and appends its entries to list1
+	if (list1->length == 0) {
+		list1->first = list2->first;
+		list1->last = list2->last;
+		list1->length = list2->length;
+	} else if (list2->length != 0) {
+		list1->last->succ = list2->first;
+		list2->first->pred = list1->last;
+		list1->last = list2->last;
+		list1->length += list2->length;
+	}
+	free(list2);
+}
+typedef struct {
+	unsigned int num_substates;
+	st_miningState** substates;
+} st_splitState;
+st_miningState* st_extractSubstate(st_miningState* state, unsigned int startIndex, unsigned int length) {
+	st_miningState* result = malloc(sizeof(st_miningState));
+	unsigned int i,j,k;
+	result->base = state->base;
+	result->candidates = st_createEmptyPatternList();
+	st_listedPattern* listed = state->candidates->first;
+	for (i=0; i<startIndex;i++) {
+		listed = listed->succ;
+	}
+	for (i=0; i<length;i++) {
+		//if (listed->pattern->bestKnownRefcount>0) {
+		st_tree* pattern = listed->pattern;
+		pattern->copyUsedDuringSplitup = st_deepCopyTree(pattern);
+		//printf("copy %p to %p.\n", pattern, pattern->copyUsedDuringSplitup);
+		pattern->embeddingUsedDuringSplitup = st_copyPatternEmbedding(pattern,listed->embedding);
+		st_patternListInsertLast(result->candidates, pattern->copyUsedDuringSplitup, listed->num_embedded_edges, pattern->embeddingUsedDuringSplitup);
+		pattern->copyUsedDuringSplitup->original = pattern;
+		//}
+		listed = listed->succ;
+	}
+	result->bestKnown = malloc(sizeof(st_patternList***) * state->base->num_classes);
+	for (i=0; i<state->base->num_classes; i++) {
+		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
+		st_patternList*** classBestKnown = malloc(sizeof(st_patternList**) * class->num_documents);
+		result->bestKnown[i] = classBestKnown;
+		for (j=0; j<class->num_documents; j++) {
+			st_document* document = ((st_document**) (class+1))[j];
+			st_patternList** documentBestKnown = malloc(sizeof(st_patternList*) * document->num_trees);
+			classBestKnown[j]=documentBestKnown;
+			for (k=0; k<document->num_trees; k++) {
+				st_patternList* sentenceBestKnown = st_createEmptyPatternList();
+				documentBestKnown[k]=sentenceBestKnown;
+				st_patternList* stateBestKnown = state->bestKnown[i][j][k];
+				sentenceBestKnown->cachedEntropy = stateBestKnown->cachedEntropy;
+				st_listedPattern* listed;
+				for (listed = stateBestKnown->first;listed != NULL; listed=listed->succ) {
+					st_tree* pattern = listed->pattern;
+					if (pattern->copyUsedDuringSplitup == NULL) {
+						pattern->copyUsedDuringSplitup = st_deepCopyTree(pattern);
+						//printf("copy %p to %p.\n", pattern, pattern->copyUsedDuringSplitup);
+						pattern->copyUsedDuringSplitup->original = pattern;
+						pattern->copyUsedDuringSplitup->flags &= ~TREEFLAG_CANDIDATE;
+						pattern->embeddingUsedDuringSplitup = st_copyPatternEmbedding(pattern,listed->embedding);
+					}
+					st_patternListInsertLast(sentenceBestKnown, pattern->copyUsedDuringSplitup, listed->num_embedded_edges,
+							(st_patternEmbedding*) pattern->embeddingUsedDuringSplitup);
+				}
+			}
+		}
+	}
+	for (i=0; i<state->base->num_classes; i++) {
+		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
+		for (j=0; j<class->num_documents; j++) {
+			st_document* document = ((st_document**) (class+1))[j];
+			for (k=0; k<document->num_trees; k++) {
+				st_patternList* stateBestKnown = state->bestKnown[i][j][k];
+				st_listedPattern* listed;
+				for (listed = stateBestKnown->first;listed != NULL; listed=listed->succ) {
+					st_tree* pattern = listed->pattern;
+					pattern->copyUsedDuringSplitup=NULL;
+					pattern->embeddingUsedDuringSplitup=NULL;
+				}
+			}
+		}
+	}
+	for (listed=state->candidates->first;listed!=NULL;listed=listed->succ) {
+		listed->pattern->copyUsedDuringSplitup=NULL;
+		listed->pattern->embeddingUsedDuringSplitup=NULL;
+	}
+	result->numLabels = state->numLabels;
+	result->supportLowerBound = state->supportLowerBound;
+	result->n=state->n;
+	result->k=state->k;
+	st_validateState(result);
 	return result;
-
+}
+void st_debugState(st_miningState* state) {
+	printf("state for documentbase %p, %u candidates, %u labels. support lower bound: %u, n: %u, k: %u\n", state->base, state->candidates->length,
+			state->numLabels, state->supportLowerBound, state->n, state->k);
+	st_listedPattern* listed;
+	for (listed=state->candidates->first; listed!=NULL; listed=listed->succ) {
+		printf("%p (with flags %x) is a candidate.\n", listed->pattern, listed->pattern->flags);
+	}
+	unsigned int i,j,k;
+	for (i=0; i<state->base->num_classes; i++) {
+		const st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
+		const st_patternList*** classBestKnown = (const st_patternList***) state->bestKnown[i];
+		for (j=0; j<class->num_documents; j++) {
+			const st_document* document = ((st_document**) (class+1))[j];
+			const st_patternList** documentBestKnown =(const st_patternList**) classBestKnown[j];
+			for (k=0; k<document->num_trees; k++) {
+				//st_deepFreeList(documentBestKnown[k]);
+				const st_patternList* list = (const st_patternList*) documentBestKnown[k];
+				printf("bestKnown[%u][%u][%u] has length %u.\n", i,j,k,list->length);
+				for (listed=list->first;listed!=NULL;listed=listed->succ) {
+					printf("%p (with flags %x) is a best known.\n", listed->pattern, listed->pattern->flags);
+				}
+				//printf("validated bestKnown of class %u, document %u, sentence %u.\n", i, j, k);
+			}
+		}
+	}
+}
+void st_miningStateStatistics(const st_miningState*, unsigned int*, unsigned int*);
+st_splitState* st_splitupState(st_miningState* state, unsigned int num_substates) {
+	/*
+	unsigned int patterns,embeddings;
+	st_miningStateStatistics(state, &patterns, &embeddings);
+	printf("splitup state with %u patterns and %u embeddings.\n", patterns, embeddings);
+	*/
+	st_splitState* result = malloc(sizeof(st_splitState));
+	result->num_substates = num_substates;
+	result->substates = malloc(sizeof(st_miningState) * num_substates);
+	unsigned int cands = state->candidates->length;
+	unsigned int length = cands/num_substates;
+	unsigned int i;
+	//printf("%u candidates, create %u substates, length is %u.\n", cands, num_substates, length);
+	for (i=0; i<num_substates-1; i++) {
+		result->substates[i] = st_extractSubstate(state, i*length, length);
+	}
+	result->substates[num_substates-1] = st_extractSubstate(state, (num_substates-1)*length, cands-(num_substates-1)*length);
+/*
+	for (i=0; i<num_substates;i++) {
+		st_miningState* state = result->substates[i];
+		printf("result->substates[%u]:\n", i);
+		st_debugState(state);
+	}
+*/
+	return result;
+}
+_Bool st_doMiningIterationsInSplitState(st_splitState* states, unsigned int index, unsigned int iterations) {
+	return st_doMiningIterations(states->substates[index], iterations);
+}
+void st_tidyBestKnown(st_patternList* list) {
+	//removes entries such that each original-value occurs exactly once.
+	st_listedPattern* link1, *link2;
+	for (link1=list->first; link1!=NULL;link1=link1->succ) {
+		for (link2=link1->succ; link2!=NULL; ) {
+			if (link1->pattern->original == link2->pattern->original) {
+				if (link2->pattern->bestKnownRefcount-- <= 1) {
+					if ((link2->pattern->flags & TREEFLAG_CANDIDATE) == 0) {
+						st_freeTree(link2->pattern);
+						//printf("free the candidate %p\n", link2->pattern);
+						st_recursiveFreeEmbedding(link2->embedding);
+					}
+				}
+				st_listedPattern* tmp = link2->succ;
+				st_patternListRemoveListed(list, link2);
+				link2=tmp;
+			} else {
+				link2=link2->succ;
+			}
+		}
+	}
+}
+st_miningState* st_mergeStates(st_splitState* states) {
+	//destroys the input and returns a mining state by concatenating the candidates and collecting the best of bestKnown.
+	st_miningState* fst = states->substates[0];
+	st_miningState* result = st_createMiningState(fst->base, fst->numLabels, fst->supportLowerBound, fst->n, fst->k);
+	unsigned int i,j,k,index;
+	st_patternList**** classBestKnown = malloc(sizeof(st_patternList***) * states->num_substates);
+	st_patternList*** documentBestKnown = malloc(sizeof(st_patternList**) * states->num_substates);
+	st_patternList** sentenceBestKnown = malloc(sizeof(st_patternList*) * states->num_substates);
+	for (i=0; i<fst->base->num_classes; i++) {
+		st_documentclass* class = ((st_documentclass**) (fst->base+1))[i];
+		for (index=0; index<states->num_substates;index++) {
+			classBestKnown[index] = states->substates[index]->bestKnown[i];
+		}
+		for (j=0; j<class->num_documents; j++) {
+			st_document* document = ((st_document**) (class+1))[j];
+			for (index=0; index<states->num_substates;index++) {
+				documentBestKnown[index] = classBestKnown[index][j];
+			}
+			for (k=0; k<document->num_trees; k++) {
+				double minimalEntropy = -1;
+				for (index=0; index<states->num_substates;index++) {
+					sentenceBestKnown[index] = documentBestKnown[index][k];
+					double ent = sentenceBestKnown[index]->cachedEntropy;
+					if (minimalEntropy == -1 || (ent != -1 && ent < minimalEntropy)) minimalEntropy = ent;
+				}
+				st_patternList* resultBestKnown = result->bestKnown[i][j][k];
+				resultBestKnown->cachedEntropy = minimalEntropy;
+				for (index=0; index<states->num_substates;index++) {
+					st_patternList* lst = sentenceBestKnown[index];
+					if (lst->length == 0) continue;
+					if (lst->cachedEntropy == minimalEntropy) {
+						st_appendPatternList(resultBestKnown, lst);
+						st_tidyBestKnown(resultBestKnown);
+					} else {
+						//free the entries.
+						st_listedPattern* listed;
+						for (listed = lst->first; listed!=NULL;) {
+							st_tree* pattern = listed->pattern;
+							if (pattern->bestKnownRefcount-- <= 1) {
+								if ((pattern->flags & TREEFLAG_CANDIDATE) == 0) {
+									st_freeTree(pattern);
+									//printf("free the candidate %p.\n", pattern);
+									st_recursiveFreeEmbedding(listed->embedding);
+								}
+							}
+							listed=listed->succ;
+							st_patternListRemoveFirst(lst);
+						}
+						free(lst);
+					}
+				}
+			}
+			for (index=0; index<states->num_substates;index++) {
+				free(documentBestKnown[index]);
+			}
+		}
+		for (index=0; index<states->num_substates;index++) {
+			free(classBestKnown[index]);
+		}
+	}
+	for (index=0; index<states->num_substates;index++) {
+		st_miningState* state = states->substates[index];
+		free(state->bestKnown);
+		st_appendPatternList(result->candidates, state->candidates);
+		free(state);
+	}
+	free(classBestKnown);
+	free(documentBestKnown);
+	free(sentenceBestKnown);
+	free(states->substates);
+	free(states);
+	return result;
+}
+typedef struct {
+	st_miningState* state;
+	unsigned int iterations;
+} st_miningInfo;
+void* st_doMineFromInfo(void* arg) {
+	st_miningInfo* info = (st_miningInfo*) arg;
+	st_doMiningIterations(info->state, info->iterations);
+	return NULL;
+}
+void st_doParallelMiningIterations(st_splitState* states, unsigned int iterations) {
+	pthread_t* threads = malloc(sizeof(pthread_t) * states->num_substates);
+	st_miningInfo* info = malloc(sizeof(st_miningInfo) * states->num_substates);
+	unsigned int i;
+	for (i=0; i<states->num_substates;i++) {
+		info[i].state = states->substates[i];
+		info[i].iterations = iterations;
+		pthread_create(&(threads[i]), NULL, st_doMineFromInfo, info+i);
+	}
+	for (i=0; i<states->num_substates;i++) {
+		pthread_join(threads[i], NULL);
+	}
+	free(info);
+	free(threads);
+}
+void st_doNonparallelMiningIterations(st_splitState* states, unsigned int iterations) {
+	unsigned int i;
+	for (i=0; i<states->num_substates;i++) {
+		st_doMiningIterations(states->substates[i],iterations);
+	}
+}
+unsigned int st_lengthEmbedding(const st_patternEmbedding* embedding) {
+	unsigned int result=0;
+	while (embedding != NULL) {
+		result++;
+		embedding = embedding->next;
+	}
+	return result;
+}
+unsigned int st_treeSize(const st_tree* tree) {
+	unsigned int result=1,i;
+	for (i=0;i<tree->num_children;i++) {
+		result += st_treeSize(tree->children[i]);
+	}
+	return result;
+}
+void st_patternListStatistics(const st_patternList* list, unsigned int* patterns, unsigned int* embeddings) {
+	*patterns=0;
+	*embeddings=0;
+	const st_listedPattern* listed;
+	for (listed=list->first;listed!=NULL; listed=listed->succ) {
+		*patterns += st_treeSize(listed->pattern);
+		*embeddings += st_lengthEmbedding(listed->embedding);
+	}
+}
+void st_miningStateStatistics(const st_miningState* state, unsigned int* patterns, unsigned int* embeddings) {
+	unsigned int pats, embs;
+	st_patternListStatistics(state->candidates, patterns,embeddings);
+	unsigned int i,j,k;
+	for (i=0; i<state->base->num_classes; i++) {
+		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
+		st_patternList*** classBestKnown = state->bestKnown[i];
+		for (j=0; j<class->num_documents; j++) {
+			st_document* document = ((st_document**) (class+1))[j];
+			st_patternList** documentBestKnown =classBestKnown[j];
+			classBestKnown[j]=documentBestKnown;
+			for (k=0; k<document->num_trees; k++) {
+				//st_deepFreeList(documentBestKnown[k]);
+				st_patternListStatistics(documentBestKnown[k], &pats, &embs);
+				*patterns += pats;
+				*embeddings += embs;
+			}
+		}
+	}
 }
 int main(int argc, char* argv[]) {
 	st_tree* tree1 = st_prepareTree(0, 0);
@@ -1067,17 +1457,43 @@ int main(int argc, char* argv[]) {
 	st_setClassInDocumentBase(base,0,class1);
 	st_setClassInDocumentBase(base,1,class2);
 	st_completeDocumentBaseSetup(base);
+	printf("base: %p\n", base);
 
 	st_miningState* state = st_createMiningState(base, 4, 1, 10, 2);
-	st_patternList* list = st_mine(state);
-	printf("got %u discriminative patterns.\n", list->length);
+	printf("starting state:\n");
+	st_debugState(state);
+	st_populateMiningState(state);
+	printf("populated state:\n");
+	st_debugState(state);
+	while(state->candidates->length > 0) {
+		st_splitState* split = st_splitupState(state,2);
+		st_freeMiningState(state);
+		st_doParallelMiningIterations(split,1);
+		printf("after mining, state1:\n");
+		st_debugState(split->substates[0]);
+		printf("after mining, state2:\n");
+		st_debugState(split->substates[1]);
+		/*
+		st_freeMiningState(split->substates[0],false);
+		st_freeMiningState(split->substates[1],false);
+		free(split->substates);
+		free(split);
+		*/
+		state = st_mergeStates(split);
+		printf("merged:\n");
+		st_debugState(state);
+	}
+	st_patternList* list = st_getDiscriminativePatterns(state);
+	//st_patternList* list = st_mine(state);
 	st_listedPattern* entry;
 	for (entry=list->first; entry != NULL; entry=entry->succ) {
 		printf("We get the following discriminative pattern:\n");
 		st_printTree(entry->pattern, 0);
 	}
-	st_deepFreeList(list);
+	st_shallowFreeList(list);
 	st_freeMiningState(state);
+		/*
+	*/
 	st_freeDocumentBase(base);
 	st_freeDocumentClass(class1);
 	st_freeDocumentClass(class2);

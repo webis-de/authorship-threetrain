@@ -5,6 +5,7 @@ import syntax_tree
 from werkzeug import cached_property
 import faulthandler
 from pos import pos_tags
+import gc
 faulthandler.enable()
 class review:
 	byReviewer = {}
@@ -159,7 +160,7 @@ except Exception as e:
 	print(e)
 	loadReviews()
 if __name__ == '__main__':
-	indices=list(range(40))+list(range(1000,1040))
+	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
 	computeStanfordTrees(indices)
 	if cacheUpdateNeeded:
 		print("write cache...")
@@ -177,11 +178,12 @@ if __name__ == '__main__':
 			#tree.print()
 			stree = reviews[0].stanfordTrees[i]
 			#print(" ".join(x.data for x in stree.leaves))
-	print("now we go for discrimination...")
-	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
-	print("got %d discriminative patterns." % len(result))
-	for pattern in result:
-		print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
-		pattern.nicePrint()
-		pattern.print()
+	for _ in range(10):
+		result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2,num_processes=4)
+		print("got %d discriminative patterns." % len(result))
+		for pattern in result:
+			print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
+			pattern.nicePrint()
+			pattern.print()
+		gc.collect()
 

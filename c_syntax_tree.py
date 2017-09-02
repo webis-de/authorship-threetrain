@@ -2,6 +2,10 @@ from ctypes import CDLL, byref, c_bool, c_char, c_wchar, c_byte, c_ubyte, c_shor
 import os
 import re
 import pos
+import multiprocessing
+import threading
+import time
+from functools import reduce
 libsyntax_tree = CDLL(os.path.dirname(os.path.abspath(__file__))+"/libsyntax_tree.so")
 regex=re.compile("(.*\W)(\w+)\s*\((.*)\);\s")
 ctypes_translation = {
@@ -132,6 +136,16 @@ class documentclass:
 			self.handle=None
 	def __del__(self):
 		self.free()
+class miningThread(threading.Thread):
+	def __init__(self,split,index,iterations):
+		self.split=split
+		self.index=index
+		self.iterations=iterations
+		threading.Thread.__init__(self)
+	def run(self):
+		self.result = libsyntax_tree.st_doMiningIterationsInSplitState(self.split,self.index,self.iterations)
+def _doMiningIterationsInSplitState(kwds):
+	return libsyntax_tree.st_doMiningIterationsInSplitState(*kwds)
 class documentbase:
 	def __init__(self, classes):
 		self.classes=classes
@@ -150,15 +164,35 @@ class documentbase:
 		return libsyntax_tree.st_support(self.handle,pattern.handle)
 	def conditionalEntropy(self,pattern,n):
 		return libsyntax_tree.st_conditionalEntropy(self.handle,pattern.handle,n,None)
-	def mineDiscriminativePatterns(self,numLabels,supportLowerBound,n,k):
+	def mineDiscriminativePatterns(self,numLabels,supportLowerBound,n,k,num_processes=1,timeBetweenSyncs=8):
 		print("create mining state.")
 		state=libsyntax_tree.st_createMiningState(self.handle,numLabels,supportLowerBound,n,k)
 		print("now go for a mine.")
-		lst = libsyntax_tree.st_mine(state)
+		#lst = libsyntax_tree.st_mine(state)
+		libsyntax_tree.st_populateMiningState(state)
+		numIterations = 1000*timeBetweenSyncs
+		while libsyntax_tree.st_numCandidates(state) != 0:
+			print("numIterations: %f, remaining %u candidates"%(numIterations,libsyntax_tree.st_numCandidates(state)))
+			if numIterations > 2**20:
+				numIterations = 2**20
+			elif numIterations < 2:
+				numIterations = 2
+			split = libsyntax_tree.st_splitupState(state,num_processes)
+			libsyntax_tree.st_freeMiningState(state)
+			startTime = time.perf_counter()
+			libsyntax_tree.st_doParallelMiningIterations(split, int(numIterations))
+			neededTime = time.perf_counter()-startTime
+			state = libsyntax_tree.st_mergeStates(split)
+			if neededTime != 0:
+				numIterations *= (timeBetweenSyncs/neededTime)**0.8
+		'''
+		libsyntax_tree.st_doMiningIterations(state,-1)
+				'''
+		lst = libsyntax_tree.st_getDiscriminativePatterns(state)
 		print("mining returned.")
 		result = copyPatternListFromHandle(lst)
-		libsyntax_tree.st_freeMiningState(state)
 		libsyntax_tree.st_shallowFreeList(lst)
+		libsyntax_tree.st_freeMiningState(state)
 		return result
 if __name__ == "__main__":
 	testpattern = syntax_tree(42, [syntax_tree(42, [])])
