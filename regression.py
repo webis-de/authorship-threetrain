@@ -6,13 +6,12 @@ class multiclassLogit:
 		self.featureLength = len(features[0])
 		self.featureMax = [max(features[i][j] for i in range(len(features))) for j in range(self.featureLength)]
 		self.featureMin = [min(features[i][j] for i in range(len(features))) for j in range(self.featureLength)]
-		self.factors = [ 1.0/(mx-mn) for (mx,mn) in zip(self.featureMax,self.featureMin) ]
-		self.features=[ [ (value-mn)*factor for (value,mn,factor) in zip(feature,self.featureMin,self.factors)] for feature in features]
+		self.factors = [ 1.0/mx if mx != 0 else 1.0 for (mx,mn) in zip(self.featureMax,self.featureMin) ]
+		self.features=[ [ value*factor for (value,factor) in zip(feature,self.factors)] for feature in features]
 		self.models = [ liblinearutil.train([1 if cl == thisclass else -1 for cl in self.classes], self.features,'-s 0') \
 					for thisclass in range(len(self.labels)) ]
-		print("training returned.")
 	def getProbabilities(self, vectors):
-		vectors = [[ (v-mn)*factor for (v,mn,factor) in zip(vector,self.featureMin,self.factors) ] for vector in vectors]
+		vectors = [[ v*factor for (v,factor) in zip(vector,self.factors) ] for vector in vectors]
 		probabilities = [ [None]*len(self.labels) for _ in vectors ]
 		for i,model in enumerate(self.models):
 			result = liblinearutil.predict([], vectors, model, '-b 1')

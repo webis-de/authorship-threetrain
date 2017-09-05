@@ -59,13 +59,11 @@ with open("syntax_tree_function_signatures","r",encoding="utf8") as f:
 			fptr.restype=restype
 			fptr.argtypes=args
 class syntax_tree:
-	def __init__(self, label, children):	
+	def __init__(self, label, children, data=None):	
 		self.label = label
-		self.parent = None
 		self.children = children
-		for ch in children:
-			ch.parent=self
 		self.handle = libsyntax_tree.st_prepareTree(label, len(children))
+		self.data=data
 		for i,ch in enumerate(children):
 			libsyntax_tree.st_setTreeChild(self.handle, i, ch.handle)
 		self.extendable = False
@@ -93,6 +91,8 @@ class syntax_tree:
 		print(line)
 		for ch in self.children:
 			ch.nicePrint(indent+'  ')
+	def __hash__(self):
+		return hash ((self.label,self.data,tuple(ch.__hash__() for ch in self.children)))
 def copySyntaxTreeFromHandle(handle):
 	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
 		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])

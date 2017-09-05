@@ -6,4 +6,4 @@ def stanfordTreeToStTree(tree):
 	if label == -1:
 		raise Exception("unknown label: "+tree.label)
 	children = [stanfordTreeToStTree(ch) for ch in tree.children]
-	return st.syntax_tree(label,children)
+	return st.syntax_tree(label,children,tree.data)

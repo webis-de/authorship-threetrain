@@ -50,6 +50,8 @@ def readTreeFromStream(stream,parent=None):
 		readTreeFromStream(stream,result)
 	return result
 def parseText(texts):
+	if texts == []:
+		return []
 	#NB the stanford parser is VERY BROKEN for it cannot, in combination with the crucial virt-sandbox, properly read data from stdin
 	#UNLESS I, personally, by my own hands, type them into the terminal.
 	handles=[]
@@ -61,14 +63,14 @@ def parseText(texts):
 	indexfile=tempfile.NamedTemporaryFile()
 	indexfile.write(bytearray("\n".join(handle.name for handle in handles)+"\n",encoding='utf8'))
 	indexfile.flush()
-	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 1 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
+	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 10 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
 	#NB this is not partable if sys.path[0] or indexfile.name contains a space.
 	#print(command % (indexfile.name,sys.path[0]))
 	mypath=os.path.dirname(os.path.abspath(__file__))
 	#print(command % (indexfile.name,mypath))
 	#from os import system
 	#system(command % (indexfile.name,sys.path[0]))
-	proc=subprocess.run((command % (indexfile.name,mypath)).split(' '), stdout=subprocess.PIPE, universal_newlines=True)
+	proc=subprocess.run((command % (indexfile.name,mypath)).split(' '), stdout=subprocess.PIPE, universal_newlines=True, stderr=subprocess.STDOUT)
 	#command='''/usr/bin/virt-sandbox -- cat'''
 	#proc=subprocess.run((command).split(' '), input="\n".join(handle.name for handle in handles), \
 	#		stdout=subprocess.PIPE, universal_newlines=True)
@@ -84,7 +86,7 @@ def parseText(texts):
 		position = output.find('(ROOT', position)
 		if position == -1:
 			break
-		if position > nextParsing and nextParsing != -1:
+		if trees is None or position > nextParsing and nextParsing != -1:
 			#tokens=[]
 			#pos=[]
 			trees=[]
