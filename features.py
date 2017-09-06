@@ -2,9 +2,10 @@ import c_syntax_tree as st
 import syntax_tree
 import stanford_parser
 from werkzeug import cached_property
-import pickle
+#import pickle
 from collections import Counter
 import pos
+import regression
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -44,6 +45,8 @@ class documentFunction:
 		available = [key in self.cachedValues for key in keys]
 		missingIndices = [i for i in range(len(documents)) if not available[i]]
 		missingValues = self.mappingv([documents[i] for i in missingIndices])
+		if len(missingIndices) != len(missingValues):
+			raise Exception("Called mappingv with %u documents, got %u values." % (len(documents), len(missingValues)))
 		missingIndex=0
 		result = []
 		for avail,key,doc in zip(available,keys,documents):
@@ -62,6 +65,10 @@ class documentFunction:
 	def mappinv(self,documents):
 		# vectorized function
 		return [self.mapping(d) for d in documents]
+	def writeValueToCache(self,document,value):
+		self.cachedValues[document.identifier]=value
+	def valueIsCached(self, document):
+		return document.identifier in self.cachedValues
 class permanentlyCachableDocumentFunction(documentFunction):
 	def writeCacheToStream(self,stream,indices=None):
 		if indices is None:
@@ -70,11 +77,13 @@ class permanentlyCachableDocumentFunction(documentFunction):
 			if not i in self.cachedValues:
 				print(i)
 				raise Exception("index does not occur in cache")
-		pickle.dump(indices,stream)
+		#pickle.dump(indices,stream)
+		stream.write(",".join(str(i) for i in indices)+"\n")
 		for i in indices:
-			self.writeValueToStream(stream,self.cachedValues[indices])
+			self.writeValueToStream(stream,self.cachedValues[i])
 	def readCacheFromStream(self,stream):
-		indices=pickle.load(stream)
+		#indices=pickle.load(stream)
+		indices = [int(ind) for ind in stream.readline().strip().split(',')]
 		for i in indices:
 			self.cachedValues[i] = self.readValueFromStream(stream)
 	def writeValueToStream(self,stream,value):
@@ -145,7 +154,7 @@ class documentbase:
 		self.documents = documents
 	def getFunction(self,functionClass,*kwds):
 		if not hasattr(self,'functionCollection'):
-			return functionCollection(*kwds)
+			return functionClass(*kwds)
 		else:
 			return self.functionCollection.getFunction(functionClass,*kwds)
 	@cached_property
@@ -159,11 +168,21 @@ class documentbase:
 		return result
 	@cached_property
 	def authors(self):
-		return set(self.byAuthor)
+		return list(set(self.byAuthor))
 	@cached_property
 	def stDocumentbase(self):
 		function = self.getFunction(stDocumentDocumentFunction)
 		return st.documentbase([st.documentclass(function.getValuev(documents),label=author) for (author,documents) in self.byAuthor.items()])
+	def subbase(self, indices):
+		result=documentbase([self.documents[i] for i in indices])
+		if hasattr(self,'functionCollection'):
+			result.functionCollection = self.functionCollection
+		return result
+	def extend(self, extraDocuments):
+		result = documentbase(self.documents + extraDocuments)
+		if hasattr(self,'functionCollection'):
+			result.functionCollection = self.functionCollection
+		return result
 class view:
 	def getFeature(self,docbase):
 		pass
@@ -176,6 +195,8 @@ class view:
 		return self.getFunction(functionClass,*kwds).getValue(document)
 	def getValues(self,documents,functionClass,*kwds):
 		return self.getFunction(functionClass,*kwds).getValuev(documents)
+	def createClassifier(self,trainingDocbase):
+		return documentClassifier(trainingDocbase,self.getFeature(trainingDocbase))
 
 # now to the concrete stuff
 class stanfordTreeDocumentFunction(permanentlyCachableDocumentFunction):
@@ -183,11 +204,13 @@ class stanfordTreeDocumentFunction(permanentlyCachableDocumentFunction):
 	def mappingv(self,documents):
 		return stanford_parser.parseText([d.text for d in documents])
 	def writeValueToStream(self,stream,trees):
-		pickle.dump(len(trees),stream)
+		#pickle.dump(len(trees),stream)
+		stream.write(str(len(trees))+"\n")
 		for tree in trees:
 			tree.writeStream(stream)
 	def readValueFromStream(self,stream):
-		length = pickle.load(stream)
+		#length = pickle.load(stream)
+		length = int(stream.readline().strip())
 		result = [None]*length
 		for i in range(length):
 			result[i] = stanford_parser.readTreeFromStream(stream)
@@ -211,7 +234,7 @@ class characterNGramDocumentFunction(derivedDocumentFunction):
 		self.n=n
 		super().__init__(tokensDocumentFunction)
 	def deriveValue(self,document,tokens):
-		print("Called to get character n grams for text %s and tokens %s" % (repr(document.text),repr(tokens)))
+		#print("Called to get character n grams for text %s and tokens %s" % (repr(document.text),repr(tokens)))
 		result = []
 		for tok in tokens:
 			result += [tok[i:i+self.n] for i in range(len(tok)-self.n+1)]
@@ -321,10 +344,21 @@ class syntacticView(view):
 			features.append(self.getFunction(posNGramFeature,n,tuple(values)))
 		base = docbase.stDocumentbase
 		treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
-			tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k)))
+			tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,num_processes=3)))
 		features.append(treeFeature)
 		return combinedFeature(features)
 		#return keeFeature
+class documentClassifier(documentFunction):
+	def __init__(self,trainingDocbase,feature):
+		self.docbase = trainingDocbase
+		self.feature = feature
+		authors = [doc.author for doc in trainingDocbase.documents]
+		vectors = self.feature.getValuev(trainingDocbase.documents)
+		self.regression = regression.multiclassLogit(trainingDocbase.authors, authors, vectors)
+	def getValuev(self,documents):
+		return self.regression.predict(self.feature.getValuev(documents))
+	def getProbabilities(self,documents):
+		return self.regression.getProbabilities(self.feature.getValuev(documents))
 if __name__== '__main__':
 	coll = documentFunctionCollection()
 	base = documentbase([document('This is your father','papa'), document('This is your mother.', 'mama')])
@@ -334,13 +368,20 @@ if __name__== '__main__':
 	feature1 = view1.getFeature(base)
 	print("feature 1:")
 	print(feature1.getValuev(base.documents))
+	classifier1 = documentClassifier(base, feature1)
+	print(classifier1.getValuev(base.documents))
 	view2 = lexicalView()
 	view2.functionCollection = coll
 	feature2 = view2.getFeature(base)
 	print("feature 2:")
 	print(feature2.getValuev(base.documents))
+	classifier2 = documentClassifier(base, feature2)
+	print(classifier2.getValuev(base.documents))
 	view3 = syntacticView([1,2,3],0,10,2)
 	view3.functionCollection = coll
 	feature3 = view3.getFeature(base)
 	print("feature 3:")
 	print(feature3.getValuev(base.documents))
+	classifier3 = documentClassifier(base, feature3)
+	print(classifier3.getValuev(base.documents))
+

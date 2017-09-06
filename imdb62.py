@@ -1,112 +1,29 @@
-import csv
+import features
 import stanford_parser
 import c_syntax_tree as st
-import syntax_tree
-from werkzeug import cached_property
 from pos import pos_tags
-import gc
-#import faulthandler
-#faulthandler.enable()
-class review:
-	byReviewer = {}
-	def __init__(self, identifier, revid, itemid, rating, title, content):
-		self.identifier = identifier
-		self.revid = revid
-		self.itemid = itemid
-		self.rating=rating
-		self.title = title
-		self.content = content
-		self.stanfordTrees = None
-		if revid in review.byReviewer:
-			review.byReviewer[revid].append(self)
-		else:
-			review.byReviewer[revid] = [self]
-	def __str__(self):
-		return "review #%d by user #%d about movie #%d (%f/10):\n%s\n%s" % \
-			(self.identifier, self.revid, self.itemid, self.rating, self.title, self.content)
-	def setStanfordTrees(self,trees):
-		print("set trees for review %d" % self.identifier)
-		self.stanfordTrees=trees
-	def writeTrees(self,stream):
-		stream.write(str(len(self.stanfordTrees))+"\n")
-		for tree in self.stanfordTrees:
-			tree.writeStream(stream)
-	def readTrees(self,stream):
-		num=int(stream.readline().strip())
-		self.stanfordTrees=[]
-		for _ in range(num):
-			self.stanfordTrees.append(stanford_parser.readTreeFromStream(stream))
-	@cached_property
-	def tokens(self):
-		res = []
-		for tree in self.stanfordTrees:
-			res += [l.data for l in tree.leaves]
-		return res
-	@cached_property
-	def tokenCounts(self):
-		res = {}
-		for tok in self.tokens:
-			if not tok in res:
-				res[tok]=1
-			else:
-				res[tok]+=1
-		return res
-	def characterNGramCounts(self, n):
-		if not hasattr(self,'_cachedCharacerNGramCounts'):
-			self._cachedCharacerNGramCounts = {}
-		if n in self._cachedCharacerNGramCounts:
-			return self._cachedCharacerNGramCounts[n]
-		result = {}
-		self._cachedCharacerNGramCounts[n] = result
-		for tok in self.tokens:
-			for i in range(len(tok)-n):
-				ngram = tok[i:i+n]
-				if ngram in result:
-					result[ngram]+=1
-				else:
-					result[ngram]=1
-		return result
-	@cached_property
-	def pos(self):
-		res = []
-		for tree in self.stanfordTrees:
-			res += [l.label for l in tree.leaves]
-		return res
-	def posNGramCounts(self, n):
-		if not hasattr(self,'_cachedPosNGramCounts'):
-			self._cachedPosNGramCounts = {}
-		if n in self._cachedPosNGramCounts:
-			return self._cachedPosNGramCounts[n]
-		result = {}
-		self._cachedPosNGramCounts[n] = result
-		for i in range(len(self.pos)-n):
-			ngram = tuple(self.pos[i:i+n])
-			if ngram in result:
-				result[ngram]+=1
-			else:
-				result[ngram]=1
-		return result
-	@cached_property
-	def stDocument(self):
-		return st.document([syntax_tree.stanfordTreeToStTree(t) for t in self.stanfordTrees])
-reviews=[]
-reviewers=[]
+documentbase=None
+functionCollection=None
 cacheUpdateNeeded=False
 def loadReviews():
-	global reviews,reviewers
+	global documentbase,functionCollection
 	reviews=[]
 	with open("imdb62.txt") as f:
 		for line in f:
 			line = line.split('\t')
-			reviews.append(review(int(line[0]), int(line[1]), int(line[2]), float(line[3]), line[4], line[5]))
-	reviewers = list(review.byReviewer)
-def computeStanfordTrees(indices,overwrite=False):
+			reviews.append(features.document(line[5], line[1]))
+	documentbase = features.documentbase(reviews)
+	functionCollection = features.documentFunctionCollection()
+	documentbase.functionCollection = functionCollection
+def computeStanfordTrees(indices=None):
 	global cacheUpdateNeeded
-	if not overwrite:
-		indices = [i for i in indices if reviews[i].stanfordTrees is None]
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	docs = documentbase.documents if indices is None else [documentbase.documents[i] for i in indices]
+	indices = [d for d in docs if not function.valueIsCached(d)]
 	if not indices:
 		return
 	cacheUpdateNeeded=True
+	'''
 	texts = [reviews[i].content for i in indices]
 	results = stanford_parser.parseText(texts)
 	if len(results) != len(indices):
@@ -114,69 +31,86 @@ def computeStanfordTrees(indices,overwrite=False):
 	for i,trees in zip(indices,results):
 		print("call setStanfordTrees for #%d" % i)
 		reviews[i].setStanfordTrees(trees)
+	'''
+	print("%u docs" % len(docs))
+	function.getValuev(docs)
 def writeCache(filename='imdb62_syntaxcache',checkIfNeeded=True):
 	global cacheUpdateNeeded
 	if checkIfNeeded and not cacheUpdateNeeded:
 		return
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'wt',encoding='utf8') as f:
-		for i,rev in enumerate(reviews):
-			if rev.stanfordTrees is not None:
+		for i,document in enumerate(documentbase.documents):
+			if function.valueIsCached(document):
 				print("write cache for review #%d" % i)
 				f.write(str(i)+"\n")
-				rev.writeTrees(f)
+				trees = function.getValue(document)
+				f.write(str(len(trees))+"\n")
+				for tree in trees:
+					tree.writeStream(f)
 	cacheUpdateNeeded=False
+def writeCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True):
+	global cacheUpdateNeeded
+	if checkIfNeeded and not cacheUpdateNeeded:
+		return
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	with open(filename,'wt',encoding='utf8') as f:
+		function.writeCacheToStream(f)
 def readCache(filename='imdb62_syntaxcache'):
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'rt',encoding='utf8') as f:
 		while True:
 			line=f.readline()
 			if not line:
 				return
 			index=int(line)
-			reviews[index].readTrees(f)
-def createStDocumentbase(indices=None):
-	selection = reviews if indices is None else [reviews[i] for i in indices]
-	selection = [sel for sel in selection if sel.stanfordTrees is not None]
-	byReviewer = {}
-	for rev in selection:
-		if rev.revid in byReviewer:
-			byReviewer[rev.revid].append(rev)
-		else:
-			byReviewer[rev.revid] = [rev]
-	#print(review.byReviewer)
-	#print(list(review.byReviewer.items())[:10])
-	classes = [(reviewer,reviews) for (reviewer,reviews) in byReviewer.items() if reviews]
-	#print(classes[:10])
-	#classes = [(reviewer,reviews) for (reviewer,reviews) in classes if reviews]
-	#print(classes[:10])
-	print("%d classes of size" % len(classes), [len(reviews) for (reviewer,reviews) in classes])
-	return st.documentbase([st.documentclass([r.stDocument for r in reviews],reviewer) for (reviewer,reviews) in classes])
-
+			document = documentbase.documents[index]
+			num_trees = int(f.readline().strip())
+			trees=[]
+			for _ in range(num_trees):
+				trees.append(stanford_parser.readTreeFromStream(f))
+			function.writeValueToCache(document, trees)
+def readCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True):
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	with open(filename,'rt',encoding='utf8') as f:
+		function.readCacheFromStream(f)
 loadReviews()
 try:
 	readCache()
 	#print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
 except Exception as e:
 	print("Failed to read cache")
 	print(e)
-	loadReviews()
+try:
+	readCache2()
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
+except Exception as e:
+	print("Failed to read cache 2")
+	print(e)
 if __name__ == '__main__':
 	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
 	computeStanfordTrees(indices)
-	if cacheUpdateNeeded:
-		print("write cache...")
-		writeCache()
-		print("cache written.")
-	base=createStDocumentbase(indices)
+	print("write cache...")
+	writeCache()
+	cacheUpdateNeeded=True
+	writeCache2()
+	print("cache written.")
+	trainingbase = documentbase.subbase(indices)
+	base = trainingbase.stDocumentbase
 	testpattern = st.syntax_tree(16,[]) #particle
 	testpattern.setExtendable(True)
 	print(base.support(testpattern))
 	print(base.conditionalEntropy(testpattern,10))
-	doc=reviews[0].stDocument
+	stanfordTreeFunction = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	doc=functionCollection.getValue(documentbase.documents[0],features.stDocumentDocumentFunction)
 	print(doc.frequency(testpattern))
 	for i,tree in enumerate(doc.trees):
 		if tree.patternOccurs(testpattern):
 			#tree.print()
-			stree = reviews[0].stanfordTrees[i]
+			stree = stanfordTreeFunction.getValue(documentbase.documents[0])[i]
 			#print(" ".join(x.data for x in stree.leaves))
 	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
 	print("got %d discriminative patterns." % len(result))
@@ -184,5 +118,3 @@ if __name__ == '__main__':
 		print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
 		pattern.nicePrint()
 		pattern.print()
-	gc.collect()
-
