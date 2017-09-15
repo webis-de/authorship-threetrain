@@ -42,6 +42,14 @@ class stanfordTree:
 			for ch in self.children:
 				res += ch.leaves
 			return res
+	def recursiveFree(self):
+		#after calling this function, no other member function of this tree or any its descendants may be called
+		self.parent=None
+		self.data=None
+		if self.children is not None:
+			for ch in self.children:
+				ch.recursiveFree()
+			self.children = None
 def readTreeFromStream(stream,parent=None):
 	result=stanfordTree(stream.readline().strip(), parent)
 	result.data = stream.readline().strip() or None

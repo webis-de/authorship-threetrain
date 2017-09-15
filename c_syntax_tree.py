@@ -6,6 +6,7 @@ import multiprocessing
 import threading
 import time
 from functools import reduce
+import traceback
 libsyntax_tree = CDLL(os.path.dirname(os.path.abspath(__file__))+"/libsyntax_tree.so")
 regex=re.compile("(.*\W)(\w+)\s*\((.*)\);\s")
 ctypes_translation = {
@@ -72,6 +73,8 @@ class syntax_tree:
 		if libsyntax_tree is not None and self.handle is not None:
 			libsyntax_tree.st_shallowFreeTree(self.handle)
 			self.handle = None
+		elif libsyntax_tree is None:
+			raise Exception("Connection to libsyntax_tree lost.")
 	def __del__(self):
 		self.free()
 	def print(self):

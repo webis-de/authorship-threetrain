@@ -69,6 +69,8 @@ class documentFunction:
 		self.cachedValues[document.identifier]=value
 	def valueIsCached(self, document):
 		return document.identifier in self.cachedValues
+	def clearCache(self):
+		self.cachedValues = {}
 class permanentlyCachableDocumentFunction(documentFunction):
 	def writeCacheToStream(self,stream,indices=None):
 		if indices is None:
@@ -81,11 +83,18 @@ class permanentlyCachableDocumentFunction(documentFunction):
 		stream.write(",".join(str(i) for i in indices)+"\n")
 		for i in indices:
 			self.writeValueToStream(stream,self.cachedValues[i])
-	def readCacheFromStream(self,stream):
+	def readCacheFromStream(self,stream,documents=None):
 		#indices=pickle.load(stream)
-		indices = [int(ind) for ind in stream.readline().strip().split(',')]
-		for i in indices:
-			self.cachedValues[i] = self.readValueFromStream(stream)
+		keys = [int(k) for k in stream.readline().strip().split(',')]
+		if documents is None:
+			for k in keys:
+				self.cachedValues[k] = self.readValueFromStream(stream)
+		else:
+			dkeys = [d.identifier for d in documents]
+			for k in keys:
+				val = self.readValueFromStream(stream)
+				if k in dkeys:
+					self.cachedValues[k] = val
 	def writeValueToStream(self,stream,value):
 		#writes a value (i.e. the outcome of some mapping-call) to a stream
 		raise NotImplementedError
@@ -93,7 +102,7 @@ class permanentlyCachableDocumentFunction(documentFunction):
 		#reads this value back
 		raise NotImplementedError
 class derivedDocumentFunction(documentFunction):
-	#does not look at the text but at the outcome of another document function
+	#does not only look at the text but also at the outcome of another document function
 	def __init__(self,predecessorFunctionClass,*kwds):
 		if not hasattr(self,'functionCollection'):
 			self.predecessorFunction = predecessorFunctionClass(*kwds)
@@ -109,7 +118,7 @@ class derivedDocumentFunction(documentFunction):
 	def mapping(self,document):
 		return self.deriveValue(document,self.predecessorFunction.getValue(document))
 class documentFunctionCollection:
-	#a set of document functinos that may be derived from each other
+	#a set of document functions that may be derived from each other
 	def __init__(self):
 		self.instances={}
 	def getFunction(self,functionClass,*kwds):
@@ -125,6 +134,11 @@ class documentFunctionCollection:
 		return self.getFunction(functionClass, *kwds).getValue(document)
 	def getValues(self,documents,functionClass,*kwds):
 		return self.getFunction(functionClass, *kwds).getValuev(documents)
+	def free(self):
+		for fun in self.instances.values():
+			fun.clearCache()
+			fun.functionCollection = None
+		self.instances = {}
 class feature(documentFunction):
 	def vectorLength(self):
 		pass
@@ -344,7 +358,7 @@ class syntacticView(view):
 			features.append(self.getFunction(posNGramFeature,n,tuple(values)))
 		base = docbase.stDocumentbase
 		treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
-			tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,num_processes=3)))
+			tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,num_processes=1)))
 		features.append(treeFeature)
 		return combinedFeature(features)
 		#return keeFeature
@@ -384,4 +398,3 @@ if __name__== '__main__':
 	print(feature3.getValuev(base.documents))
 	classifier3 = documentClassifier(base, feature3)
 	print(classifier3.getValuev(base.documents))
-

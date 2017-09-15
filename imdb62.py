@@ -56,7 +56,7 @@ def writeCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'wt',encoding='utf8') as f:
 		function.writeCacheToStream(f)
-def readCache(filename='imdb62_syntaxcache'):
+def readCache(filename='imdb62_syntaxcache',indices=None):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'rt',encoding='utf8') as f:
 		while True:
@@ -69,37 +69,43 @@ def readCache(filename='imdb62_syntaxcache'):
 			trees=[]
 			for _ in range(num_trees):
 				trees.append(stanford_parser.readTreeFromStream(f))
-			function.writeValueToCache(document, trees)
-def readCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True):
+			if indices is None or index in indices:
+				function.writeValueToCache(document, trees)
+			else:
+				for tr in trees:
+					tr.recursiveFree()
+def readCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True,indices=None):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'rt',encoding='utf8') as f:
-		function.readCacheFromStream(f)
+		documents = None if indices is None else [documentbase.documents[i] for i in indices]
+		function.readCacheFromStream(f,documents=documents)
 loadReviews()
-try:
-	readCache()
-	#print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
-	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
-	print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
-except Exception as e:
-	print("Failed to read cache")
-	print(e)
-try:
-	readCache2()
-	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
-	print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
-except Exception as e:
-	print("Failed to read cache 2")
-	print(e)
+print("loaded reviews")
+def initialize(indices=None):
+	try:
+		readCache(indices=indices)
+		#print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
+		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+		print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
+	except Exception as e:
+		print("Failed to read cache")
+		print(e)
+	try:
+		readCache2(indices=indices)
+		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+		print("read from cache 2: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
+	except Exception as e:
+		print("Failed to read cache 2")
+		print(e)
 if __name__ == '__main__':
-	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
-	computeStanfordTrees(indices)
-	print("write cache...")
-	writeCache()
-	cacheUpdateNeeded=True
-	writeCache2()
-	print("cache written.")
+	indices=list(range(10))+list(range(1000,1010))+list(range(2000,2010))
+	#initialize(indices)
+	#computeStanfordTrees(indices)
+	readCache('small_cache')
+	print("obtained trees.")
 	trainingbase = documentbase.subbase(indices)
 	base = trainingbase.stDocumentbase
+	print("got documentbase.")
 	testpattern = st.syntax_tree(16,[]) #particle
 	testpattern.setExtendable(True)
 	print(base.support(testpattern))
