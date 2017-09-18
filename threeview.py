@@ -1,14 +1,32 @@
 import imdb62
 import features
 import random
+import gc
+def getSuccessRate(testBase,classifier):
+	return len([None for (pred,doc) in zip(classifier.getValuev(testBase.documents),testBase.documents) if pred == doc.author])
+def getAccumulatedPrediction(testBase,*classifiers):
+	probs = [cl.getProbabilities(testBase.documents) for cl in classifiers]
+	authors = tuple(classifiers[0].regression.labels)
+	for i in range(1,len(classifiers)):
+		assert(tuple(classifiers[i].regression.labels) == authors)
+	acc = [[sum(p[i][j] for p in probs) for j in range(len(authors))] for i in range(len(testBase.documents))]
+	return [authors[p.index(max(p))] for p in acc]
+def getAccumulatedSuccessRate(testBase,*classifiers):
+	return len([None for (pred,doc) in zip(getAccumulatedPrediction(testBase,*classifiers),testBase.documents) if pred == doc.author])
 def getTrueLabels(documents):
 	return [d.author for d in documents]
-def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled):
+def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None):
 	labelled1 = trainingBase
 	labelled2 = trainingBase
 	labelled3 = trainingBase
-	print("trainingBase consists of these authors:", [d.author for d in trainingBase.documents])
+	extra_true1=0
+	extra_true2=0
+	extra_true3=0
+	extra_false1=0
+	extra_false2=0
+	extra_false3=0
 	for iteration in range(num_iterations):
+		gc.collect()
 		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
 		classifier1 = view1.createClassifier(labelled1)
@@ -17,38 +35,57 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		classified2 = classifier2.getValuev(choice)
 		classifier3 = view3.createClassifier(labelled3)
 		classified3 = classifier3.getValuev(choice)
-		print(classified1)
-		print(classified2)
-		print(classified3)
-		print("true:")
-		print([d.author for d in choice])
-		extraLabelled1 = [features.document(choice[i].text,classified2[i]) for i in range(len(choice)) if classified2[i] == classified3[i]]
-		extraLabelled2 = [features.document(choice[i].text,classified1[i]) for i in range(len(choice)) if classified1[i] == classified3[i]]
-		extraLabelled3 = [features.document(choice[i].text,classified1[i]) for i in range(len(choice)) if classified1[i] == classified2[i]]
+		resline="%d,%d,%d,%d,%d,%d" % (iteration,len(testBase.documents),getSuccessRate(testBase,classifier1),\
+			getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),\
+			getAccumulatedSuccessRate(testBase,classifier1,classifier2,classifier3))
+		print("RESULT:",resline)
+		if results_stream != None:
+			results_stream.write(resline+"\n")
+			results_stream.flush()
+		extraLabelled1=[]
+		extraLabelled2=[]
+		extraLabelled3=[]
+		for l1,l2,l3,doc in zip(classified1,classified2,classified3,choice):
+			if l1 == l2:
+				extraLabelled3.append(features.document(doc.text,l1))
+				if doc.author == l1:
+					extra_true3+=1
+				else:
+					extra_false3 += 1
+			if l1 == l3:
+				extraLabelled2.append(features.document(doc.text,l1))
+				if doc.author == l1:
+					extra_true2+=1
+				else:
+					extra_false2 += 1
+			if l2 == l3:
+				extraLabelled1.append(features.document(doc.text,l2))
+				if doc.author == l2:
+					extra_true1+=1
+				else:
+					extra_false1+=1
 		labelled1 = labelled1.extend(extraLabelled1)
-		print("labelled1 consists of these authors:", [d.author for d in labelled1.documents])
 		labelled2 = labelled2.extend(extraLabelled2)
-		print("labelled2 consists of these authors:", [d.author for d in labelled2.documents])
 		labelled3 = labelled3.extend(extraLabelled3)
-		print("labelled3 consists of these authors:", [d.author for d in labelled3.documents])
 		unlabelledBase = unlabelledBase.subbase(list(set(range(len(unlabelledBase.documents))) - set(choiceIndices)))
+	print("added documents (true/false): %d/%d   %d/%d   %d/%d" % (extra_true1,extra_false1,extra_true2,extra_false2,extra_true3,extra_false3))
 	classifier1 = view1.createClassifier(labelled1)
-	prob1 = classifier1.getProbabilities(testBase.documents)
 	classifier2 = view2.createClassifier(labelled2)
-	prob2 = classifier2.getProbabilities(testBase.documents)
 	classifier3 = view3.createClassifier(labelled3)
-	prob3 = classifier3.getProbabilities(testBase.documents)
-	print("trainingBase.authors: ",trainingBase.authors)
-	print("classifier1.labels: ",classifier1.regression.labels)
-	print("classifier2.labels: ",classifier2.regression.labels)
-	print("classifier3.labels: ",classifier3.regression.labels)
-	accumulated = [ [p1+p2+p3 for (p1,p2,p3) in zip(vec1, vec2, vec3)] for (vec1,vec2,vec3) in zip(prob1, prob2, prob3)]
-	return [trainingBase.authors[p.index(max(p))] for p in accumulated]
+	pred = getAccumulatedPrediction(testBase,classifier1,classifier2,classifier3)
+	correct = len([None for (pred,doc) in zip(pred,testBase.documents) if pred == doc.author])
+	resline="%d,%d,%d,%d,%d,%d" % (num_iterations,len(testBase.documents),getSuccessRate(testBase,classifier1),\
+		getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),correct)
+	print("RESULTS: ",resline)
+	if results_stream != None:
+		results_stream.write(resline+"\n")
+		results_stream.flush()
+	return pred
 def mainfunc():
 	indices = []
 	trainIndices = []
 	testIndices = []
-	for i in range(16):
+	for i in range(3,7):
 		indices += list(range(i*1000, i*1000+60))
 		trainIndices += list(range(i*1000, i*1000+10))
 		testIndices += list(range(i*1000+10, i*1000+20))
@@ -64,80 +101,16 @@ def mainfunc():
 	print("handle: %x" % trainBase.stDocumentbase.handle)
 	view1 = features.characterView([1,2,3])
 	view1.functionCollection = imdb62.functionCollection
-	classifier1 = view1.createClassifier(trainBase)
-
 	view2 = features.lexicalView()
 	view2.functionCollection = imdb62.functionCollection
-	classifier2 = view2.createClassifier(trainBase)
-
 	view3 = features.syntacticView([1,2,3], 0, 10, 2)
 	view3.functionCollection = imdb62.functionCollection
-	classifier3 = view3.createClassifier(trainBase)
-
-	prob1 = classifier1.getProbabilities(testBase.documents)
-	prob2 = classifier2.getProbabilities(testBase.documents)
-	prob3 = classifier3.getProbabilities(testBase.documents)
-	accumulated = [ [p1+p2+p3 for (p1,p2,p3) in zip(vec1, vec2, vec3)] for (vec1,vec2,vec3) in zip(prob1, prob2, prob3)]
-	pred1 = [trainBase.authors[p.index(max(p))] for p in prob1]
-	pred2 = [trainBase.authors[p.index(max(p))] for p in prob2]
-	pred3 = [trainBase.authors[p.index(max(p))] for p in prob3]
-	accumulatedPrediction = [trainBase.authors[p.index(max(p))] for p in accumulated]
-	trueLabels = [d.author for d in testBase.documents]
-
-	for i in range(len(testIndices)):
-		out=str(i)+' ('
-		out += '1' if pred1[i] == trueLabels[i] else '0'
-		out += '1' if pred2[i] == trueLabels[i] else '0'
-		out += '1' if pred3[i] == trueLabels[i] else '0'
-		out += '1' if accumulatedPrediction[i] == trueLabels[i] else '0'
-		out += ')'
-		for j in range(len(prob1[i])):
-			pattern=''
-			if trainBase.authors[j] == trueLabels[i]:
-				pattern='\t[%f,%f,%f]'
-			else:
-				pattern='\t(%f,%f,%f)'
-			out += pattern % (prob1[i][j], prob2[i][j], prob3[i][j])
-		print(out)
-	print("success rate (character): %d/%d." % ( len([None for (pred,tr) in zip(pred1, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (lexical): %d/%d." % ( len([None for (pred,tr) in zip(pred2, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (syntactic): %d/%d." % ( len([None for (pred,tr) in zip(pred3, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (accumulated): %d/%d." % ( len([None for (pred,tr) in zip(accumulatedPrediction, trueLabels) if pred == tr]), len(testIndices)))
-	prediction = threeTrain(view1, view2, view3, trainBase, unlabelledBase, testBase, 2, 2)
-	print(list(zip(prediction, trueLabels)))
-	print("success rate (character): %d/%d." % ( len([None for (pred,tr) in zip(pred1, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (lexical): %d/%d." % ( len([None for (pred,tr) in zip(pred2, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (syntactic): %d/%d." % ( len([None for (pred,tr) in zip(pred3, trueLabels) if pred == tr]), len(testIndices)))
-	print("success rate (accumulated): %d/%d." % ( len([None for (pred,tr) in zip(accumulatedPrediction, trueLabels) if pred == tr]), len(testIndices)))
+	trueLabels=getTrueLabels(testBase.documents)
+	with open("results.txt","at") as f:
+		prediction = threeTrain(view1, view2, view3, trainBase, unlabelledBase, testBase, 4, 40,f)
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 if __name__=='__main__':
 	mainfunc()
-for _ in range(3):
-	print("collect: %u"%gc.collect())
-print("garbage: %u" % len(gc.garbage))
-from sys import exit
-exit(0)
-
-
-
-
-
-
-view3 = syntacticView([1,2,3], 0, 10, 2)
-classifier = view3.createClassifier(trainIndices, getTrueLabels(trainIndices))
-prediction3 = classifier.predict(testIndices)
-print(list(zip(prediction3, trueLabels)))
-print("success rate (syntactic): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction3, getTrueLabels(testIndices)) if pred == tr]), len(testIndices)))
-
-view1 = characterView([1,2,3])
-classifier = view1.createClassifier(trainIndices, getTrueLabels(trainIndices))
-prediction1 = classifier.predict(testIndices)
-print(list(zip(prediction1, trueLabels)))
-print("success rate (character): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction1, getTrueLabels(testIndices)) if pred == tr]), len(testIndices)))
-
-view2 = lexicalView()
-classifier = view2.createClassifier(trainIndices, getTrueLabels(trainIndices))
-prediction2 = classifier.predict(testIndices)
-print(list(zip(prediction2, trueLabels)))
-print("success rate (lexical): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction2, getTrueLabels(testIndices)) if pred == tr]), len(testIndices)))
-
+	for _ in range(3):
+		print("collect: %u"%gc.collect())
+	print("garbage: %u" % len(gc.garbage))

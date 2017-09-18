@@ -90,6 +90,7 @@ def initialize(indices=None):
 	except Exception as e:
 		print("Failed to read cache")
 		print(e)
+	return
 	try:
 		readCache2(indices=indices)
 		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
