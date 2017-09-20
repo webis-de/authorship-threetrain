@@ -2,6 +2,8 @@ import features
 import stanford_parser
 import c_syntax_tree as st
 from pos import pos_tags
+import gc
+from memory_profiler import profile
 documentbase=None
 functionCollection=None
 cacheUpdateNeeded=False
@@ -81,9 +83,9 @@ def readCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True,indices=None):
 		function.readCacheFromStream(f,documents=documents)
 loadReviews()
 print("loaded reviews")
-def initialize(indices=None):
+def initialize(filename='imdb62_syntaxcache',indices=None):
 	try:
-		readCache(indices=indices)
+		readCache(filename=filename,indices=indices)
 		#print("read from cache: ", [i for i,rev in enumerate(reviews) if rev.stanfordTrees is not None])
 		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 		print("read from cache: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
@@ -98,11 +100,32 @@ def initialize(indices=None):
 	except Exception as e:
 		print("Failed to read cache 2")
 		print(e)
+@profile
+def doMiningTest(base):
+	st.showCMemoryStatistics()
+	print("%d trees exist." % st.num_trees)
+	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2,num_processes=3)
+	print("got %d discriminative patterns." % len(result))
+	del result
+	gc.collect()
+	if len(gc.garbage)> 0:
+		print("garbage!")
+		sys.exit(42)
+	st.showCMemoryStatistics()
+	print("%d trees exist." % st.num_trees)
+
 if __name__ == '__main__':
-	indices=list(range(10))+list(range(1000,1010))+list(range(2000,2010))
+	sum_tokens = 0
+	wordlen = [len(doc.text.split(' ')) for doc in documentbase.documents]
+	print(wordlen)
+	average = sum(wordlen)/float(len(wordlen))
+	variance = sum( (w-average)**2 for w in wordlen ) / len(wordlen)
+	print("average token count: %f" % average)
+	print("standard deviation: %f" % (variance**0.5))
+	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
 	#initialize(indices)
 	#computeStanfordTrees(indices)
-	readCache('small_cache')
+	readCache(indices=indices)
 	print("obtained trees.")
 	trainingbase = documentbase.subbase(indices)
 	base = trainingbase.stDocumentbase
@@ -119,9 +142,5 @@ if __name__ == '__main__':
 			#tree.print()
 			stree = stanfordTreeFunction.getValue(documentbase.documents[0])[i]
 			#print(" ".join(x.data for x in stree.leaves))
-	result=base.mineDiscriminativePatterns(len(pos_tags),0,10,2)
-	print("got %d discriminative patterns." % len(result))
-	for pattern in result:
-		print("we get this pattern with conditional entropy %f:" % base.conditionalEntropy(pattern, 10))
-		pattern.nicePrint()
-		pattern.print()
+	for _ in range(12):
+		doMiningTest(base)

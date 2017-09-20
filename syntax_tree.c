@@ -10,6 +10,30 @@ typedef int st_label;
 //#define TREEFLAG_ALREADY_MENTIONED 4
 #define TREEFLAG_CANDIDATE 4
 #define VALIDATE_EMBEDDINGS
+
+#define COUNT_MALLOCS
+
+#ifdef COUNT_MALLOCS
+int num_allocations=0;
+void* getmem(size_t s) {
+	__sync_fetch_and_add(&num_allocations,1);
+	return malloc(s);
+}
+void freemem(void* ptr) {
+	__sync_fetch_and_sub(&num_allocations,1);
+	free(ptr);
+}
+void showMemoryInformation() {
+	printf("%d memory blocks held.\n",num_allocations);
+}
+#else
+#define getmem malloc
+#define freemem free
+void showMemoryInformation() {
+	printf("memory allocations not tracked.\n");
+}
+#endif
+
 struct st_syntax_tree {
 	st_label label;
 	unsigned int num_children;
@@ -26,15 +50,15 @@ void st_freeTree(st_tree* t) {
 	for (i=0; i<t->num_children; i++) {
 		st_freeTree((st_tree*) t->children[i]);
 	}
-	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) free(t->children);
-	free(t);
+	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) freemem(t->children);
+	freemem(t);
 }
 void st_shallowFreeTree(st_tree* t) {
-	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) free(t->children);
-	free(t);
+	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) freemem(t->children);
+	freemem(t);
 }
 st_tree* st_createTree(st_label label, unsigned int num_children, st_tree** children) {
-	st_tree* result = (st_tree*) malloc(sizeof(st_tree));
+	st_tree* result = (st_tree*) getmem(sizeof(st_tree));
 	result->label=label;
 	result->num_children=num_children;
 	result->flags=0;
@@ -50,7 +74,7 @@ st_tree* st_createTree(st_label label, unsigned int num_children, st_tree** chil
 	return result;
 }
 st_tree* st_prepareTree(st_label label, unsigned int num_children) {
-	st_tree* result = (st_tree*) malloc(sizeof(st_tree) + sizeof(st_tree*) * num_children);
+	st_tree* result = (st_tree*) getmem(sizeof(st_tree) + sizeof(st_tree*) * num_children);
 	result->label=label;
 	result->num_children = num_children;
 	result->bestKnownRefcount=0;
@@ -144,10 +168,10 @@ typedef struct {
 } st_document;
 //the convention is that directly after the document, a list of `num_trees` entries of type st_tree* follows.
 void st_shallowFreeDocument(st_document* doc) {
-	free(doc);
+	freemem(doc);
 }
 st_document* st_prepareDocument(unsigned int num_trees) {
-	st_document* result = (st_document*) malloc(sizeof(st_document) + num_trees * sizeof(st_tree*));
+	st_document* result = (st_document*) getmem(sizeof(st_document) + num_trees * sizeof(st_tree*));
 	result->num_trees = num_trees;
 	return result;
 }
@@ -169,10 +193,10 @@ typedef struct {
 } st_documentclass;
 //the convention is that it follows `num_documents` pointers to the documents.
 void st_freeDocumentClass(st_documentclass* class) {
-	free(class);
+	freemem(class);
 }
 st_documentclass* st_prepareDocumentClass(unsigned int num_documents) {
-	st_documentclass* result = malloc(sizeof(st_documentclass) + num_documents * sizeof(st_document*));
+	st_documentclass* result = getmem(sizeof(st_documentclass) + num_documents * sizeof(st_document*));
 	result->num_documents = num_documents;
 	return result;
 }
@@ -185,10 +209,10 @@ typedef struct {
 } st_documentbase;
 //the convention is that it follows `num_classes` pointers to the document classes.
 void st_freeDocumentBase(st_documentbase* base) {
-	free(base);
+	freemem(base);
 }
 st_documentbase* st_prepareDocumentBase(unsigned int num_classes) {
-	st_documentbase* result = malloc(sizeof(st_documentbase) + num_classes * sizeof(st_documentclass*));
+	st_documentbase* result = getmem(sizeof(st_documentbase) + num_classes * sizeof(st_documentclass*));
 	result->num_classes = num_classes;
 	return result;
 }
@@ -215,7 +239,7 @@ unsigned int st_support(const st_documentbase* base, const st_tree* pattern) {
 double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern, unsigned int n, double* lowerBound) {
 	//if lowerBound != NULL, it must be a valid writeable pointer to which the computed lower bound for all superpatterns is written.
 	size_t memorysize = sizeof(unsigned int) * base->num_classes * n;
-	unsigned int* frequencyMatrix = malloc(memorysize);
+	unsigned int* frequencyMatrix = getmem(memorysize);
 	memset(frequencyMatrix, 0, memorysize);
 	unsigned int i,j;
 	for (i=0; i<base->num_classes; i++) {
@@ -278,7 +302,7 @@ double st_conditionalEntropy(const st_documentbase* base, const st_tree* pattern
 		}
 		*/
 	}
-	free(frequencyMatrix);
+	freemem(frequencyMatrix);
 	return result;
 }
 struct st_partialPatternEmbedding {
@@ -341,12 +365,12 @@ unsigned int st_rightPathLength(const st_tree* pattern) {
 }
 st_patternEmbedding* st_copyPatternEmbedding(const st_tree* pattern, const st_patternEmbedding* embedding) {
 	if (embedding==NULL) return NULL;
-	st_patternEmbedding* result = malloc(sizeof(st_patternEmbedding));
+	st_patternEmbedding* result = getmem(sizeof(st_patternEmbedding));
 	result->classIndex = embedding->classIndex;
 	result->documentIndex = embedding->documentIndex;
 	result->sentenceIndex = embedding->sentenceIndex;
 	unsigned int length = st_rightPathLength(pattern);
-	result->rightPath = malloc(sizeof(st_tree*) * length);
+	result->rightPath = getmem(sizeof(st_tree*) * length);
 	memcpy(result->rightPath, embedding->rightPath, sizeof(st_tree*)*length);
 	result->next = st_copyPatternEmbedding(pattern,embedding->next);
 	return result;
@@ -366,7 +390,7 @@ typedef struct {
 	st_listedPattern* last;
 } st_patternList;
 st_patternList* st_createEmptyPatternList() {
-	st_patternList* result = malloc(sizeof(st_patternList));
+	st_patternList* result = getmem(sizeof(st_patternList));
 	result->length=0;
 	result->cachedEntropy = -1;
 	result->first=NULL;
@@ -374,7 +398,7 @@ st_patternList* st_createEmptyPatternList() {
 	return result;
 }
 void st_patternListInsertFirst(st_patternList* list, st_tree* pattern, unsigned int num_embedded_edges, st_patternEmbedding* embedding) {
-	st_listedPattern* link = malloc(sizeof(st_listedPattern));
+	st_listedPattern* link = getmem(sizeof(st_listedPattern));
 	link->pattern = pattern;
 	link->embedding=embedding;
 	link->num_embedded_edges = num_embedded_edges;
@@ -386,7 +410,7 @@ void st_patternListInsertFirst(st_patternList* list, st_tree* pattern, unsigned 
 	list->length++;
 }
 void st_patternListInsertLast(st_patternList* list, st_tree* pattern, unsigned int num_embedded_edges, st_patternEmbedding* embedding) {
-	st_listedPattern* link = malloc(sizeof(st_listedPattern));
+	st_listedPattern* link = getmem(sizeof(st_listedPattern));
 	link->pattern = pattern;
 	link->embedding=embedding;
 	link->num_embedded_edges = num_embedded_edges;
@@ -405,7 +429,7 @@ void st_patternListRemoveFirst(st_patternList* list) {
 	} else {
 		link->succ->pred = NULL;
 	}
-	free(link);
+	freemem(link);
 	list->length--;
 }
 void st_patternListRemoveLast(st_patternList* list) {
@@ -416,7 +440,7 @@ void st_patternListRemoveLast(st_patternList* list) {
 	} else {
 		link->pred->succ = NULL;
 	}
-	free(link);
+	freemem(link);
 	list->length--;
 }
 void st_patternListRemoveListed(st_patternList* list, st_listedPattern* remove) {
@@ -430,15 +454,15 @@ void st_patternListRemoveListed(st_patternList* list, st_listedPattern* remove) 
 	} else {
 		remove->succ->pred = remove->pred;
 	}
-	free(remove);
+	freemem(remove);
 	list->length--;
 }
 void st_recursiveFreeEmbedding(st_patternEmbedding* embedding) {
 	while (embedding != NULL) {
-		//printf("about to free embedding in class %u, document %u, sentence %u\n", embedding->classIndex, embedding->documentIndex, embedding->sentenceIndex);
-		free(embedding->rightPath);
+		//printf("about to freemem embedding in class %u, document %u, sentence %u\n", embedding->classIndex, embedding->documentIndex, embedding->sentenceIndex);
+		freemem(embedding->rightPath);
 		st_patternEmbedding* next = embedding->next;
-		free(embedding);
+		freemem(embedding);
 		embedding=next;
 	}
 }
@@ -451,7 +475,7 @@ void st_deepCleanupList(st_patternList* list) {
 		st_recursiveFreeEmbedding(link->embedding);
 		st_listedPattern* tmp=link;
 		link=link->succ;
-		free(tmp);
+		freemem(tmp);
 	}
 	list->length=0;
 	list->first=NULL;
@@ -459,7 +483,7 @@ void st_deepCleanupList(st_patternList* list) {
 }
 void st_deepFreeList(st_patternList* list) {
 	st_deepCleanupList(list);
-	free(list);
+	freemem(list);
 }
 void st_shallowFreeList(st_patternList* list) {
 	//frees everything besides the patterns and embeddings
@@ -468,9 +492,9 @@ void st_shallowFreeList(st_patternList* list) {
 	while (link != NULL) {
 		st_listedPattern* tmp=link;
 		link=link->succ;
-		free(tmp);
+		freemem(tmp);
 	}
-	free(list);
+	freemem(list);
 }
 unsigned int st_listGetLength(const st_patternList* list){return list->length;}
 st_listedPattern* st_listGetFirstEntry(const st_patternList* list){return list->first;}
@@ -515,7 +539,7 @@ unsigned int st_esupport(const st_documentbase* base, const st_patternEmbedding*
 double st_econditionalEntropy(const st_documentbase* base, unsigned int n, double* lowerBound, const st_patternEmbedding* embedding) {
 	//if lowerBound != NULL, it must be a valid writeable pointer to which the computed lower bound for all superpatterns is written.
 	size_t memorysize = sizeof(unsigned int) * base->num_classes * n;
-	unsigned int* frequencyMatrix = malloc(memorysize);
+	unsigned int* frequencyMatrix = getmem(memorysize);
 	//printf("allocated this frequency matrix: %p\n", frequencyMatrix);
 	memset(frequencyMatrix, 0, memorysize);
 	unsigned int i,j;
@@ -622,7 +646,7 @@ double st_econditionalEntropy(const st_documentbase* base, unsigned int n, doubl
 		*/
 	}
 	//printf("about to free this frequency matrix: %p\n", frequencyMatrix);
-	free(frequencyMatrix);
+	freemem(frequencyMatrix);
 	return result;
 }
 
@@ -680,16 +704,16 @@ void st_validateState(const st_miningState* state) {
 }
 st_miningState* st_createMiningState(st_documentbase* base, unsigned int numLabels, unsigned int supportLowerBound, unsigned int n, unsigned int kee) {
 	unsigned int i,j,k;
-	st_miningState* result = malloc(sizeof(st_miningState));
+	st_miningState* result = getmem(sizeof(st_miningState));
 	result->base=base;
-	result->bestKnown = malloc(sizeof(st_patternList***) * base->num_classes);
+	result->bestKnown = getmem(sizeof(st_patternList***) * base->num_classes);
 	for (i=0; i<base->num_classes; i++) {
 		st_documentclass* class = ((st_documentclass**) (base+1))[i];
-		st_patternList*** classBestKnown = malloc(sizeof(st_patternList**) * class->num_documents);
+		st_patternList*** classBestKnown = getmem(sizeof(st_patternList**) * class->num_documents);
 		result->bestKnown[i] = classBestKnown;
 		for (j=0; j<class->num_documents; j++) {
 			st_document* document = ((st_document**) (class+1))[j];
-			st_patternList** documentBestKnown = malloc(sizeof(st_patternList*) * document->num_trees);
+			st_patternList** documentBestKnown = getmem(sizeof(st_patternList*) * document->num_trees);
 			classBestKnown[j]=documentBestKnown;
 			for (k=0; k<document->num_trees; k++) {
 				documentBestKnown[k] = st_createEmptyPatternList();
@@ -817,11 +841,11 @@ void st_insertPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 void st_appendSingletonEmbeddings(st_tree* tree, st_label label,
 		unsigned int classIndex, unsigned int documentIndex, unsigned int sentenceIndex, st_patternEmbedding** embedding) {
 	if (tree->label == label) {
-		st_patternEmbedding* emb = malloc(sizeof(st_patternEmbedding));
+		st_patternEmbedding* emb = getmem(sizeof(st_patternEmbedding));
 		emb->classIndex = classIndex;
 		emb->documentIndex = documentIndex;
 		emb->sentenceIndex = sentenceIndex;
-		emb->rightPath = malloc(sizeof(st_tree*));
+		emb->rightPath = getmem(sizeof(st_tree*));
 		emb->rightPath[0] = tree;
 		emb->next = *embedding;
 		*embedding=emb;
@@ -886,23 +910,23 @@ void st_freeMiningState(st_miningState* state) { // frees all beside state->base
 					}
 					st_patternListRemoveFirst(list);
 				}
-				free(list);
+				freemem(list);
 			}
-			free(documentBestKnown);
+			freemem(documentBestKnown);
 		}
-		free(classBestKnown);
+		freemem(classBestKnown);
 	}
-	free(state->bestKnown);
+	freemem(state->bestKnown);
 	//st_deepFreeList(state->candidates);
-	free(state);
+	freemem(state);
 }
 void st_expandEmbedding(st_tree* node, st_patternEmbedding* embedding, unsigned int position,
 			st_patternEmbedding** expandedEmbeddings, st_patternEmbedding** lastEmbedding, _Bool recursive) {
-	st_patternEmbedding* newEmbedding = malloc(sizeof(st_patternEmbedding));
+	st_patternEmbedding* newEmbedding = getmem(sizeof(st_patternEmbedding));
 	newEmbedding->classIndex = embedding->classIndex;
 	newEmbedding->documentIndex = embedding->documentIndex;
 	newEmbedding->sentenceIndex = embedding->sentenceIndex;
-	newEmbedding->rightPath = malloc(sizeof(st_tree*) * (position+2));
+	newEmbedding->rightPath = getmem(sizeof(st_tree*) * (position+2));
 	memcpy(newEmbedding->rightPath, embedding->rightPath, sizeof(st_tree*) * (position+1));
 	newEmbedding->rightPath[position+1] = node;
 	/*newEmbedding->next = expandedEmbeddings[node->label];
@@ -939,8 +963,8 @@ void st_expandPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 	//st_validateEmbedding(state->base, pattern, embedding);
 	//printf("expand this pattern with %u embedded edges at position %u (embeddable: %u):\n", num_embedded_edges, position, embeddable);
 	//st_printTree(pattern, 0);
-	st_patternEmbedding** expandedEmbeddings = malloc(sizeof(st_patternEmbedding*) * state->numLabels);
-	st_patternEmbedding** lastEmbedding = malloc(sizeof(st_patternEmbedding*) * state->numLabels);
+	st_patternEmbedding** expandedEmbeddings = getmem(sizeof(st_patternEmbedding*) * state->numLabels);
+	st_patternEmbedding** lastEmbedding = getmem(sizeof(st_patternEmbedding*) * state->numLabels);
 	unsigned int i;
 	for (i=0; i<state->numLabels; i++) {
 		expandedEmbeddings[i]=NULL;
@@ -1004,8 +1028,8 @@ void st_expandPattern(st_miningState* state, st_tree* pattern, unsigned int num_
 			st_insertPattern(state, expanded, num_embedded_edges, expandedEmbeddings[i]);
 		}
 	}
-	free(expandedEmbeddings);
-	free(lastEmbedding);
+	freemem(expandedEmbeddings);
+	freemem(lastEmbedding);
 }
 _Bool st_indistinguishablePatterns(const st_patternEmbedding* embedding1, const st_patternEmbedding* embedding2) {
 	//two patterns are indistinguishable if they match exactly the same trees
@@ -1127,14 +1151,14 @@ void st_appendPatternList(st_patternList* list1, st_patternList* list2) {
 		list1->last = list2->last;
 		list1->length += list2->length;
 	}
-	free(list2);
+	freemem(list2);
 }
 typedef struct {
 	unsigned int num_substates;
 	st_miningState** substates;
 } st_splitState;
 st_miningState* st_extractSubstate(st_miningState* state, unsigned int startIndex, unsigned int length) {
-	st_miningState* result = malloc(sizeof(st_miningState));
+	st_miningState* result = getmem(sizeof(st_miningState));
 	unsigned int i,j,k;
 	result->base = state->base;
 	result->candidates = st_createEmptyPatternList();
@@ -1153,14 +1177,14 @@ st_miningState* st_extractSubstate(st_miningState* state, unsigned int startInde
 		//}
 		listed = listed->succ;
 	}
-	result->bestKnown = malloc(sizeof(st_patternList***) * state->base->num_classes);
+	result->bestKnown = getmem(sizeof(st_patternList***) * state->base->num_classes);
 	for (i=0; i<state->base->num_classes; i++) {
 		st_documentclass* class = ((st_documentclass**) (state->base+1))[i];
-		st_patternList*** classBestKnown = malloc(sizeof(st_patternList**) * class->num_documents);
+		st_patternList*** classBestKnown = getmem(sizeof(st_patternList**) * class->num_documents);
 		result->bestKnown[i] = classBestKnown;
 		for (j=0; j<class->num_documents; j++) {
 			st_document* document = ((st_document**) (class+1))[j];
-			st_patternList** documentBestKnown = malloc(sizeof(st_patternList*) * document->num_trees);
+			st_patternList** documentBestKnown = getmem(sizeof(st_patternList*) * document->num_trees);
 			classBestKnown[j]=documentBestKnown;
 			for (k=0; k<document->num_trees; k++) {
 				st_patternList* sentenceBestKnown = st_createEmptyPatternList();
@@ -1242,9 +1266,9 @@ st_splitState* st_splitupState(st_miningState* state, unsigned int num_substates
 	st_miningStateStatistics(state, &patterns, &embeddings);
 	printf("splitup state with %u patterns and %u embeddings.\n", patterns, embeddings);
 	*/
-	st_splitState* result = malloc(sizeof(st_splitState));
+	st_splitState* result = getmem(sizeof(st_splitState));
 	result->num_substates = num_substates;
-	result->substates = malloc(sizeof(st_miningState) * num_substates);
+	result->substates = getmem(sizeof(st_miningState) * num_substates);
 	unsigned int cands = state->candidates->length;
 	unsigned int length = cands/num_substates;
 	unsigned int i;
@@ -1292,9 +1316,9 @@ st_miningState* st_mergeStates(st_splitState* states) {
 	st_miningState* fst = states->substates[0];
 	st_miningState* result = st_createMiningState(fst->base, fst->numLabels, fst->supportLowerBound, fst->n, fst->k);
 	unsigned int i,j,k,index;
-	st_patternList**** classBestKnown = malloc(sizeof(st_patternList***) * states->num_substates);
-	st_patternList*** documentBestKnown = malloc(sizeof(st_patternList**) * states->num_substates);
-	st_patternList** sentenceBestKnown = malloc(sizeof(st_patternList*) * states->num_substates);
+	st_patternList**** classBestKnown = getmem(sizeof(st_patternList***) * states->num_substates);
+	st_patternList*** documentBestKnown = getmem(sizeof(st_patternList**) * states->num_substates);
+	st_patternList** sentenceBestKnown = getmem(sizeof(st_patternList*) * states->num_substates);
 	for (i=0; i<fst->base->num_classes; i++) {
 		st_documentclass* class = ((st_documentclass**) (fst->base+1))[i];
 		for (index=0; index<states->num_substates;index++) {
@@ -1335,29 +1359,29 @@ st_miningState* st_mergeStates(st_splitState* states) {
 							listed=listed->succ;
 							st_patternListRemoveFirst(lst);
 						}
-						free(lst);
+						freemem(lst);
 					}
 				}
 			}
 			for (index=0; index<states->num_substates;index++) {
-				free(documentBestKnown[index]);
+				freemem(documentBestKnown[index]);
 			}
 		}
 		for (index=0; index<states->num_substates;index++) {
-			free(classBestKnown[index]);
+			freemem(classBestKnown[index]);
 		}
 	}
 	for (index=0; index<states->num_substates;index++) {
 		st_miningState* state = states->substates[index];
-		free(state->bestKnown);
+		freemem(state->bestKnown);
 		st_appendPatternList(result->candidates, state->candidates);
-		free(state);
+		freemem(state);
 	}
-	free(classBestKnown);
-	free(documentBestKnown);
-	free(sentenceBestKnown);
-	free(states->substates);
-	free(states);
+	freemem(classBestKnown);
+	freemem(documentBestKnown);
+	freemem(sentenceBestKnown);
+	freemem(states->substates);
+	freemem(states);
 	return result;
 }
 typedef struct {
@@ -1370,8 +1394,8 @@ void* st_doMineFromInfo(void* arg) {
 	return NULL;
 }
 void st_doParallelMiningIterations(st_splitState* states, unsigned int iterations) {
-	pthread_t* threads = malloc(sizeof(pthread_t) * states->num_substates);
-	st_miningInfo* info = malloc(sizeof(st_miningInfo) * states->num_substates);
+	pthread_t* threads = getmem(sizeof(pthread_t) * states->num_substates);
+	st_miningInfo* info = getmem(sizeof(st_miningInfo) * states->num_substates);
 	unsigned int i;
 	for (i=0; i<states->num_substates;i++) {
 		info[i].state = states->substates[i];
@@ -1381,8 +1405,8 @@ void st_doParallelMiningIterations(st_splitState* states, unsigned int iteration
 	for (i=0; i<states->num_substates;i++) {
 		pthread_join(threads[i], NULL);
 	}
-	free(info);
-	free(threads);
+	freemem(info);
+	freemem(threads);
 }
 void st_doNonparallelMiningIterations(st_splitState* states, unsigned int iterations) {
 	unsigned int i;
@@ -1505,5 +1529,6 @@ int main(int argc, char* argv[]) {
 	st_shallowFreeTree(tree2);
 	st_shallowFreeTree(tree3);
 	st_shallowFreeTree(tree4);
+	showMemoryInformation();
 	return 0;
 }

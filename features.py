@@ -6,6 +6,8 @@ from werkzeug import cached_property
 from collections import Counter
 import pos
 import regression
+from memory_profiler import profile
+import config
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -22,6 +24,13 @@ import regression
 #	- a classifier is a document function which assigns, to each document, an author
 #	our aim is to find a good classifier.
 
+def normalizedCounter(*kwds):
+	ctr = Counter(*kwds)
+	if not config.normalize_features:
+		return ctr
+	s = sum(ctr.values())
+	factor = 1.0/sum(ctr.values())
+	return Counter({key: value*factor for (key,value) in ctr.items()})
 class document:
 	def __init__(self, text, author=None):
 		self.text = text
@@ -31,7 +40,12 @@ class document:
 		return hash(self.text)
 class documentFunction:
 	def __init__(self):
+		#print("created document function",type(self),hasattr(self,'functionCollection'))
+		if not hasattr(self,'functionCollection'):
+			raise Exception("no function collection?")
 		self.cachedValues = {}
+	'''def __del__(self):
+		print("delete document function",type(self))'''
 	def getValue(self,document):
 		key=document.identifier
 		if key in self.cachedValues:
@@ -44,7 +58,7 @@ class documentFunction:
 		keys = [d.identifier for d in documents]
 		available = [key in self.cachedValues for key in keys]
 		missingIndices = [i for i in range(len(documents)) if not available[i]]
-		missingValues = self.mappingv([documents[i] for i in missingIndices])
+		missingValues = self.mappingv([documents[i] for i in missingIndices]) if missingIndices else []
 		if len(missingIndices) != len(missingValues):
 			raise Exception("Called mappingv with %u documents, got %u values." % (len(documents), len(missingValues)))
 		missingIndex=0
@@ -62,7 +76,7 @@ class documentFunction:
 	def mapping(self,document):
 		# applies to a single text
 		return self.mappingv([document])[0]
-	def mappinv(self,documents):
+	def mappingv(self,documents):
 		# vectorized function
 		return [self.mapping(d) for d in documents]
 	def writeValueToCache(self,document,value):
@@ -121,6 +135,9 @@ class documentFunctionCollection:
 	#a set of document functions that may be derived from each other
 	def __init__(self):
 		self.instances={}
+		'''print("created documentFunctionCollection",type(self))
+	def __del__(self):
+		print("deleted documentFunctionCollection")'''
 	def getFunction(self,functionClass,*kwds):
 		key = (functionClass,kwds)
 		if key not in self.instances:
@@ -144,8 +161,10 @@ class feature(documentFunction):
 		pass
 class combinedFeature(feature):
 	#given features ft1, ..., ftn; this one maps a document d to (ft1(d), ..., ftn(d))
-	def __init__(self, subfeatures):
+	def __init__(self, subfeatures,functionCollection=None):
 		self.subfeatures = subfeatures
+		if functionCollection is not None:
+			self.functionCollection = functionCollection
 		super().__init__()
 	def vectorLength(self):
 		return sum(ft.vectorLength() for ft in self.subfeatures)
@@ -166,6 +185,9 @@ class derivedFeature(feature,derivedDocumentFunction):
 class documentbase:
 	def __init__(self, documents):
 		self.documents = documents
+		'''print("created documentbase")
+	def __del__(self):
+		print("deleted documentbase")'''
 	def getFunction(self,functionClass,*kwds):
 		if not hasattr(self,'functionCollection'):
 			return functionClass(*kwds)
@@ -239,10 +261,17 @@ class tokensDocumentFunction(derivedDocumentFunction):
 			result += [l.data for l in tree.leaves]
 		return result
 class tokensCounterDocumentFunction(derivedDocumentFunction):
+	#normalized
 	def __init__(self):
 		super().__init__(tokensDocumentFunction)
 	def deriveValue(self,document,tokens):
-		return Counter(tokens)
+		return normalizedCounter(tokens)
+class numTokensDocumentFunction(derivedDocumentFunction):
+	def __init__(self):
+		super().__init__(tokensDocumentFunction)
+	def deriveValue(self,document,tokens):
+		return len(tokens)
+'''
 class characterNGramDocumentFunction(derivedDocumentFunction):
 	def __init__(self,n):
 		self.n=n
@@ -253,11 +282,22 @@ class characterNGramDocumentFunction(derivedDocumentFunction):
 		for tok in tokens:
 			result += [tok[i:i+self.n] for i in range(len(tok)-self.n+1)]
 		return result
+'''
+class characterNGramDocumentFunction(documentFunction):
+	def __init__(self,n):
+		self.n=n
+		super().__init__()
+	def mapping(self,document):
+		t=document.text
+		return [t[i:i+self.n] for i in range(len(t)-self.n)]
 class characterNGramCounterDocumentFunction(derivedDocumentFunction):
 	def __init__(self,n):
 		super().__init__(characterNGramDocumentFunction,n)
 	def deriveValue(self,document,tokens):
-		return Counter(tokens)
+		return normalizedCounter(tokens)
+class numCharactersDocumentFunction(documentFunction):
+	def mapping(self,document):
+		return len(document.text)
 class posDocumentFunction(derivedDocumentFunction):
 	#for each document, returns a list of pos tokens
 	def __init__(self):
@@ -271,7 +311,7 @@ class posCounterDocumentFunction(derivedDocumentFunction):
 	def __init__(self):
 		super().__init__(posDocumentFunction)
 	def deriveValue(self,document,pos):
-		return Counter(pos)
+		return normalizedCounter(pos)
 class posNGramDocumentFunction(derivedDocumentFunction):
 	def __init__(self,n):
 		self.n=n
@@ -283,7 +323,7 @@ class posNGramCounterDocumentFunction(derivedDocumentFunction):
 		self.n=n
 		super().__init__(posNGramDocumentFunction,n)
 	def deriveValue(self,document,pos):
-		return Counter(pos)
+		return normalizedCounter(pos)
 class stDocumentDocumentFunction(derivedDocumentFunction):
 	def __init__(self):
 		super().__init__(stanfordTreeDocumentFunction)
@@ -334,7 +374,7 @@ class characterView(view):
 			for doc in docbase.documents:
 				values = values.union(set(function.getValue(doc)))
 			features.append(self.getFunction(characterNGramFeature,n,tuple(values)))
-		return combinedFeature(features)
+		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 class lexicalView(view):
 	def getFeature(self, docbase):
 		values=set()
@@ -343,11 +383,17 @@ class lexicalView(view):
 			values = values.union(set(function.getValue(doc)))
 		return self.getFunction(wordUnigramFeature,tuple(values))
 class syntacticView(view):
-	def __init__(self, ns, supportLowerBound, n, k):
+	def __init__(self, ns, supportLowerBound, n, k, remineTrees=True):
 		self.ns = ns
 		self.supportLowerBound = supportLowerBound
 		self.n = n
 		self.k = k
+		self.remineTrees = remineTrees
+		if remineTrees:
+			print("going to remine the trees")
+		else:
+			print("going to reuse the trees")
+	#@profile
 	def getFeature(self,docbase):
 		features=[]
 		for n in self.ns:
@@ -357,10 +403,19 @@ class syntacticView(view):
 				values = values.union(set(function.getValue(doc)))
 			features.append(self.getFunction(posNGramFeature,n,tuple(values)))
 		base = docbase.stDocumentbase
-		treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
-			tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,num_processes=1)))
+		if not self.remineTrees:
+			print("try to reuse trees")
+		if not self.remineTrees and hasattr(self,'treeFeature'):
+			treeFeature = self.treeFeature
+			print("reuse trees")
+		else:
+			treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
+				tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,\
+												num_processes=config.num_threads_mining)))
+			if not self.remineTrees:
+				self.treeFeature = treeFeature
 		features.append(treeFeature)
-		return combinedFeature(features)
+		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 		#return keeFeature
 class documentClassifier(documentFunction):
 	def __init__(self,trainingDocbase,feature):
@@ -369,10 +424,20 @@ class documentClassifier(documentFunction):
 		authors = [doc.author for doc in trainingDocbase.documents]
 		vectors = self.feature.getValuev(trainingDocbase.documents)
 		self.regression = regression.multiclassLogit(trainingDocbase.authors, authors, vectors)
-	def getValuev(self,documents):
-		return self.regression.predict(self.feature.getValuev(documents))
+		self.cachedProbabilities = {}
+		if hasattr(feature,'functionCollection'):
+			self.functionCollection = feature.functionCollection
+		super().__init__()
+	def mappingv(self,documents):
+		#return self.regression.predict(self.feature.getValuev(documents))
+		return self.regression.getProbabilities(self.feature.getValuev(documents),num_threads=config.num_threads_classifying)
+		'''
 	def getProbabilities(self,documents):
 		return self.regression.getProbabilities(self.feature.getValuev(documents))
+		'''
+	def predict(self,documents):
+		probs = self.getValuev(documents)
+		return [regression.countermax(p) for p in probs]
 if __name__== '__main__':
 	coll = documentFunctionCollection()
 	base = documentbase([document('This is your father','papa'), document('This is your mother.', 'mama')])

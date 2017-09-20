@@ -59,8 +59,10 @@ with open("syntax_tree_function_signatures","r",encoding="utf8") as f:
 			fptr=getattr(libsyntax_tree,name)
 			fptr.restype=restype
 			fptr.argtypes=args
+num_trees = 0
 class syntax_tree:
 	def __init__(self, label, children, data=None):	
+		global num_trees
 		self.label = label
 		self.children = children
 		self.handle = libsyntax_tree.st_prepareTree(label, len(children))
@@ -68,6 +70,7 @@ class syntax_tree:
 		for i,ch in enumerate(children):
 			libsyntax_tree.st_setTreeChild(self.handle, i, ch.handle)
 		self.extendable = False
+		num_trees += 1
 	def free(self):
 		#NB: After calling this function, NO OTHER MEMBER FUNCTION may be called.
 		if libsyntax_tree is not None and self.handle is not None:
@@ -76,7 +79,9 @@ class syntax_tree:
 		elif libsyntax_tree is None:
 			raise Exception("Connection to libsyntax_tree lost.")
 	def __del__(self):
+		global num_trees
 		self.free()
+		num_trees -= 1
 	def print(self):
 		libsyntax_tree.st_printTree(self.handle,0)
 	def setExtendable(self, isExtendable=True):
@@ -187,6 +192,7 @@ class documentbase:
 				libsyntax_tree.st_doParallelMiningIterations(split, int(numIterations))
 				neededTime = time.perf_counter()-startTime
 				state = libsyntax_tree.st_mergeStates(split)
+				print("needed time: %f" % neededTime)
 				if neededTime != 0:
 					numIterations *= (timeBetweenSyncs/neededTime)**0.8
 			'''
@@ -200,6 +206,8 @@ class documentbase:
 		libsyntax_tree.st_shallowFreeList(lst)
 		libsyntax_tree.st_freeMiningState(state)
 		return result
+def showCMemoryStatistics():
+	libsyntax_tree.showMemoryInformation()
 if __name__ == "__main__":
 	testpattern = syntax_tree(42, [syntax_tree(42, [])])
 	testpattern.print()
