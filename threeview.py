@@ -161,6 +161,7 @@ def mainfunc():
 		testIndices += list(tst)
 	indices = trainIndices + unlabelledIndices + testIndices
 	if config.use_small_cache:
+		print("use small cache.")
 		imdb62.initialize(indices=indices,filename='small_cache')
 	else:
 		imdb62.initialize(indices=indices)
@@ -175,12 +176,12 @@ def mainfunc():
 	view1.functionCollection = imdb62.functionCollection
 	view2 = features.lexicalView()
 	view2.functionCollection = imdb62.functionCollection
-	view3 = features.syntacticView([1,2,3], config.min_support, config.num_bins, config.max_embeddable_edges,remineTrees=config.remine_trees)
+	view3 = features.syntacticView([1,2,3], config.min_support, config.num_bins, config.max_embeddable_edges,\
+										remine_trees_until = config.remine_trees_until)
 	view3.functionCollection = imdb62.functionCollection
 	trueLabels=getTrueLabels(testBase.documents)
 	with open("results.txt","at") as f:
-		f.write('# ')
-		f.write(', '.join(key+": "+str(value) for (key,value) in config.configuration.items())+"\n")
+		f.write('# '+config.config_str+"\n")
 		prediction = threeTrain(view1, view2, view3, trainBase, unlabelledBase, testBase, config.training_iterations, config.training_unlabelled,f)
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 #@profile

@@ -383,16 +383,12 @@ class lexicalView(view):
 			values = values.union(set(function.getValue(doc)))
 		return self.getFunction(wordUnigramFeature,tuple(values))
 class syntacticView(view):
-	def __init__(self, ns, supportLowerBound, n, k, remineTrees=True):
+	def __init__(self, ns, supportLowerBound, n, k, remine_trees_until=0):
 		self.ns = ns
 		self.supportLowerBound = supportLowerBound
 		self.n = n
 		self.k = k
-		self.remineTrees = remineTrees
-		if remineTrees:
-			print("going to remine the trees")
-		else:
-			print("going to reuse the trees")
+		self.remine_trees_until = None if remine_trees_until == 0 else remine_trees_until
 	#@profile
 	def getFeature(self,docbase):
 		features=[]
@@ -403,17 +399,16 @@ class syntacticView(view):
 				values = values.union(set(function.getValue(doc)))
 			features.append(self.getFunction(posNGramFeature,n,tuple(values)))
 		base = docbase.stDocumentbase
-		if not self.remineTrees:
-			print("try to reuse trees")
-		if not self.remineTrees and hasattr(self,'treeFeature'):
+		if self.remine_trees_until is 0:
 			treeFeature = self.treeFeature
-			print("reuse trees")
 		else:
 			treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
 				tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,\
 												num_processes=config.num_threads_mining)))
-			if not self.remineTrees:
-				self.treeFeature = treeFeature
+			if self.remine_trees_until is not None:
+				self.remine_trees_until -= 1
+				if self.remine_trees_until == 0:
+					self.treeFeature = treeFeature
 		features.append(treeFeature)
 		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 		#return keeFeature
@@ -423,7 +418,7 @@ class documentClassifier(documentFunction):
 		self.feature = feature
 		authors = [doc.author for doc in trainingDocbase.documents]
 		vectors = self.feature.getValuev(trainingDocbase.documents)
-		self.regression = regression.multiclassLogit(trainingDocbase.authors, authors, vectors)
+		self.regression = regression.multiclassLogit(authors, vectors)
 		self.cachedProbabilities = {}
 		if hasattr(feature,'functionCollection'):
 			self.functionCollection = feature.functionCollection
