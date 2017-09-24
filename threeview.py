@@ -9,24 +9,28 @@ from collections import Counter
 from functools import reduce
 import heapq
 import config
+import concurrent.futures
+import easyparallel
 #from memory_profiler import profile
 #tracemalloc.start(1024)
 def getSuccessRate(testBase,classifier):
 	return len([None for (pred,doc) in zip(classifier.predict(testBase.documents),testBase.documents) if pred == doc.author])
 def getAccumulatedPrediction(testBase,*classifiers):
 	probs = [cl.getValuev(testBase.documents) for cl in classifiers]
-	authors = tuple(classifiers[0].regression.labels)
 	acc = [reduce(lambda c1,c2: c1+c2, (p[i] for p in probs)) for i in range(len(testBase.documents))]
 	return [regression.countermax(c) for c in acc]
 def getAccumulatedSuccessRate(testBase,*classifiers):
 	return len([None for (pred,doc) in zip(getAccumulatedPrediction(testBase,*classifiers),testBase.documents) if pred == doc.author])
 def getTrueLabels(documents):
 	return [d.author for d in documents]
-def getBalancedSubbase(documentbase,classifier=None):
+def getBalancedSubbase(documentbase,classifier=None,predicted_probabilities=None):
 	#gets a subbase of documentbase where each author occurs with the same frequency, choosen maximally
 	#if an additional classifier is given, tries to choose the documents most 'typically' for this author and classifier.
 	ctr = Counter({auth: len(docs) for (auth,docs) in documentbase.byAuthor.items()})
-	confidence = {doc.identifier: prob for (doc,prob) in zip(documentbase.documents, classifier.getValuev(documentbase.documents))}
+	confidence=None
+	if classifier is not None:
+		predicted_probabilities = predicted_probabilities if predicted_probabilities is not None else classifier.getValuev(documentbase.documents)
+		confidence = {doc.identifier: prob for (doc,prob) in zip(documentbase.documents, predicted_probabilities)}
 	num_docs = min(ctr.values())
 	result_docs = []
 	for auth in documentbase.authors:
@@ -39,6 +43,9 @@ def getBalancedSubbase(documentbase,classifier=None):
 	if hasattr(documentbase,'functionCollection'):
 		result.functionCollection = documentbase.functionCollection
 	return result
+def trainAndPredict(view,documentbase,test_documents):
+	classifier = view.createClassifier(documentbase)
+	return classifier,classifier.predict(test_documents)
 #@profile
 def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None):
 	labelled1 = trainingBase
@@ -53,16 +60,26 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	extra_false1=0
 	extra_false2=0
 	extra_false3=0
+	parallelGroup = easyparallel.ParallelismGroup(3)
 	for iteration in range(num_iterations):
 		gc.collect()
 		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
+		'''
 		classifier1 = view1.createClassifier(balanced1)
 		classified1 = classifier1.predict(choice)
 		classifier2 = view2.createClassifier(balanced2)
 		classified2 = classifier2.predict(choice)
 		classifier3 = view3.createClassifier(balanced3)
 		classified3 = classifier3.predict(choice)
+		'''
+		parallelGroup.add_branch(trainAndPredict,view1,balanced1,choice)
+		parallelGroup.add_branch(trainAndPredict,view2,balanced2,choice)
+		parallelGroup.add_branch(trainAndPredict,view3,balanced3,choice)
+		parallelGroup_results = parallelGroup.get_results()
+		classifier1,classified1 = parallelGroup_results[0]
+		classifier2,classified2 = parallelGroup_results[1]
+		classifier3,classified3 = parallelGroup_results[2]
 		resline="%d,%d,%d,%d,%d,%d" % (iteration,len(testBase.documents),getSuccessRate(testBase,classifier1),\
 			getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),\
 			getAccumulatedSuccessRate(testBase,classifier1,classifier2,classifier3))
@@ -74,10 +91,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		extraLabelled1=[]
 		extraLabelled2=[]
 		extraLabelled3=[]
-		prob1 = classifier1.getValuev(choice)
-		prob2 = classifier2.getValuev(choice)
-		prob3 = classifier3.getValuev(choice)
-		for l1,l2,l3,doc,p1,p2,p3 in zip(classified1,classified2,classified3,choice,prob1,prob2,prob3):
+		for l1,l2,l3,doc in zip(classified1,classified2,classified3,choice):
 			print("classified: %s, %s, %s. true: %s"%(l1,l2,l3,doc.author))
 			#print(p1,p2,p3)
 			if l1 == l2:
@@ -116,16 +130,22 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		print("labelled 3: ",Counter([d.author for d in labelled3.documents]))
 		unlabelledBase = unlabelledBase.subbase(list(set(range(len(unlabelledBase.documents))) - set(choiceIndices)))
 		if config.undersample:
+			'''
 			balanced1 = getBalancedSubbase(labelled1,classifier1)
 			balanced2 = getBalancedSubbase(labelled2,classifier2)
 			balanced3 = getBalancedSubbase(labelled3,classifier3)
+			'''
+			parallelGroup.add_branch(getBalancedSubbase,labelled1,classifier1)
+			parallelGroup.add_branch(getBalancedSubbase,labelled2,classifier2)
+			parallelGroup.add_branch(getBalancedSubbase,labelled3,classifier3)
+			balanced1,balanced2,balanced3 = parallelGroup.get_results()
 		classifier1.clearCache()
 		classifier2.clearCache()
 		classifier3.clearCache()
 		classifier1=None
 		classifier2=None
 		classifier3=None
-	print("added documents (true/false): %d/%d   %d/%d   %d/%d" % (extra_true1,extra_false1,extra_true2,extra_false2,extra_true3,extra_false3))
+		print("added documents (true/false): %d/%d   %d/%d   %d/%d" % (extra_true1,extra_false1,extra_true2,extra_false2,extra_true3,extra_false3))
 	classifier1 = view1.createClassifier(balanced1)
 	classifier2 = view2.createClassifier(balanced2)
 	classifier3 = view3.createClassifier(balanced3)

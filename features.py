@@ -8,6 +8,8 @@ import pos
 import regression
 from memory_profiler import profile
 import config
+import concurrent.futures
+import easyparallel
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -416,16 +418,16 @@ class documentClassifier(documentFunction):
 	def __init__(self,trainingDocbase,feature):
 		self.docbase = trainingDocbase
 		self.feature = feature
-		authors = [doc.author for doc in trainingDocbase.documents]
-		vectors = self.feature.getValuev(trainingDocbase.documents)
-		self.regression = regression.multiclassLogit(authors, vectors)
+		self.authors = [doc.author for doc in trainingDocbase.documents]
+		self.vectors = self.feature.getValuev(trainingDocbase.documents)
+		self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,self.authors, self.vectors)
 		self.cachedProbabilities = {}
 		if hasattr(feature,'functionCollection'):
 			self.functionCollection = feature.functionCollection
 		super().__init__()
 	def mappingv(self,documents):
 		#return self.regression.predict(self.feature.getValuev(documents))
-		return self.regression.getProbabilities(self.feature.getValuev(documents),num_threads=config.num_threads_classifying)
+		return easyparallel.callWorkerFunction(self.regression.getProbabilities,self.feature.getValuev(documents))
 		'''
 	def getProbabilities(self,documents):
 		return self.regression.getProbabilities(self.feature.getValuev(documents))
