@@ -6,10 +6,10 @@ configuration = {
 		# reduces startup time, useful to search errors
 'num_authors': 10, # number of authors to include into training
 'num_training': 7, # training documents / author
-'num_unlabelled':400 , # unlabelled documents / author
+'num_unlabelled':200 , # unlabelled documents / author
 'num_test': 20, # test documents / author
 'training_unlabelled': 16*10, # number of unlabelled documents to examine before re-computing classifiers
-'training_iterations': 20, # number of training iterations (=number of re-trained classifiers) 
+'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
 'num_threads_mining': 1, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
 'normalize_features': True, # divides the frequency of a token in a document by the total number of tokens in this document,
@@ -27,10 +27,10 @@ configuration = {
 	      # approximates the actual information gain better but make the estimates worse, increasing memory and time requirements
 'max_embeddable_edges': 2, # k value from the Kim paper. Mine k-ee tree patterns, i.e. patterns with <= k embedded edges
 'use_scikit': True, # set false to use liblinear
-'python_random_seed': 42, # random seed to use; set to None for using the default (and always changing) seed
+'random_seed': 43, # random seed to use; set to None for using the default (and always changing) seed
 'scikit_solver': 'saga', #solver to use in sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 'liblinear'
 'scikit_fit_intercept': False, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default False
-'scikit_tolerance': 0.0001, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 0.01
+'scikit_tolerance': 0.01, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 0.01
 'scikit_multi_class': 'multinomial', #parameter for sklearn.linear_model.LogisticRegression. Must be either 'ovr' (one versus rest) or 'multinomial'.
 				#Irrelevant if use_scikit=False. Default 'ovr'
 'scikit_balance_classes': False #whether to balance the classes, so imbalanced training sets (with differing numbers of documents per author) get
@@ -47,5 +47,6 @@ if num_authors * num_unlabelled < training_unlabelled * training_iterations:
 		(num_authors*num_unlabelled, training_iterations*training_unlabelled))
 config_str = ', '.join(key+': '+str(configuration[key]) for key in sorted(configuration.keys()))
 print(config_str)
-random.seed(python_random_seed)
-numpy.random.seed(python_random_seed)
+if random_seed is not None:
+	random.seed(random_seed)
+	numpy.random.seed(random_seed)

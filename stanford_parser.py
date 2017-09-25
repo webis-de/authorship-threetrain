@@ -3,6 +3,7 @@ import os.path
 import tempfile
 import sys
 from werkzeug import cached_property
+import pickle
 class stanfordTree:
 	def __init__(self, label, parent=None, position=None):
 		self.label=label
@@ -130,13 +131,7 @@ def parseText(texts):
 	return results
 if __name__=="__main__":
 	results=parseText(['Is this a hash?! Oh, #2 is one. For $60 dollars, 60$ can be given! Would they "quote \'inside\'"? Or; if anything goes: Then this (or this?).'])
-	import io
-	stream=io.StringIO()
-	for tree in results[0]:
-		print(tree.__str__())
-		tree.writeStream(stream)
-	stream.seek(0)
-	#print(stream.getvalue())
-	while stream.read(1):
-		stream.seek(stream.tell()-1)
-		print(readTreeFromStream(stream).__str__())
+	dump = pickle.dumps(results)
+	print(repr(results))
+	print(dump)
+	print(repr(pickle.loads(dump)))

@@ -65,6 +65,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		gc.collect()
 		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
+		print("got choice")
 		'''
 		classifier1 = view1.createClassifier(balanced1)
 		classified1 = classifier1.predict(choice)
@@ -76,7 +77,9 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		parallelGroup.add_branch(trainAndPredict,view1,balanced1,choice)
 		parallelGroup.add_branch(trainAndPredict,view2,balanced2,choice)
 		parallelGroup.add_branch(trainAndPredict,view3,balanced3,choice)
+		print("waiting for classification and prediction...")
 		parallelGroup_results = parallelGroup.get_results()
+		print("got results!")
 		classifier1,classified1 = parallelGroup_results[0]
 		classifier2,classified2 = parallelGroup_results[1]
 		classifier3,classified3 = parallelGroup_results[2]
@@ -84,7 +87,6 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 			getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),\
 			getAccumulatedSuccessRate(testBase,classifier1,classifier2,classifier3))
 		print("RESULT:",resline)
-		print("labelled documents: %d, %d, %d" % (len(labelled1.documents),len(labelled2.documents),len(labelled3.documents)))
 		if results_stream != None:
 			results_stream.write(resline+"\n")
 			results_stream.flush()

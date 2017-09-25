@@ -240,7 +240,7 @@ class view:
 class stanfordTreeDocumentFunction(permanentlyCachableDocumentFunction):
 	# to each document, return a list of stanford trees, encoding the tokenization, pos-tagging and syntactic structure
 	def mappingv(self,documents):
-		return stanford_parser.parseText([d.text for d in documents])
+		return easyparallel.callWorkerFunction(stanford_parser.parseText,[d.text for d in documents])
 	def writeValueToStream(self,stream,trees):
 		#pickle.dump(len(trees),stream)
 		stream.write(str(len(trees))+"\n")
@@ -420,14 +420,21 @@ class documentClassifier(documentFunction):
 		self.feature = feature
 		self.authors = [doc.author for doc in trainingDocbase.documents]
 		self.vectors = self.feature.getValuev(trainingDocbase.documents)
+		print("start classifying with %d vectors and %d features" % (len(self.vectors),feature.vectorLength()))
 		self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,self.authors, self.vectors)
+		print("returned from classifying with %d vectors and %d features" % (len(self.vectors),feature.vectorLength()))
 		self.cachedProbabilities = {}
 		if hasattr(feature,'functionCollection'):
 			self.functionCollection = feature.functionCollection
 		super().__init__()
 	def mappingv(self,documents):
 		#return self.regression.predict(self.feature.getValuev(documents))
-		return easyparallel.callWorkerFunction(self.regression.getProbabilities,self.feature.getValuev(documents))
+		print("start predicting with %d features and %d documents" % (self.feature.vectorLength(),len(documents)))
+		vectors = self.feature.getValuev(documents)
+		print("got %d features for %d documents" % (self.feature.vectorLength(),len(documents)))
+		result = easyparallel.callWorkerFunction(self.regression.getProbabilities,vectors)
+		print("got probabilities %d features and %d documents" % (self.feature.vectorLength(),len(documents)))
+		return result
 		'''
 	def getProbabilities(self,documents):
 		return self.regression.getProbabilities(self.feature.getValuev(documents))

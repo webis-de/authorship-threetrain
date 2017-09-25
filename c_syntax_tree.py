@@ -201,7 +201,7 @@ class documentbase:
 		else:
 			libsyntax_tree.st_doMiningIterations(state,-1)
 		lst = libsyntax_tree.st_getDiscriminativePatterns(state)
-		print("mining returned.")
+		print("mining returned %d trees." % libsyntax_tree.st_listGetLength(lst))
 		result = copyPatternListFromHandle(lst)
 		libsyntax_tree.st_shallowFreeList(lst)
 		libsyntax_tree.st_freeMiningState(state)
