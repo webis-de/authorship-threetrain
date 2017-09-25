@@ -30,6 +30,9 @@ class ParallelismGroup:
 		#BLOCKS until all created branches return. Returns the results of the branched function calls in order of calling add_branch (not thread-safe)
 		for th in self.threads:
 			th.join()
+		for th in self.threads:
+			if th.excepted:
+				raise th.exception
 		result = [th.result for th in self.threads]
 		self.threads = []
 		return result
@@ -44,7 +47,12 @@ class OuterThread(threading.Thread):
 		super().__init__()
 		self.start()
 	def run(self):
-		self.result = self.fun(*self.args,**self.kwargs)
+		self.excepted=False
+		try:
+			self.result = self.fun(*self.args,**self.kwargs)
+		except Exception as e:
+			self.excepted=True
+			self.exception = e
 def callWorkerFunction(fun,*args,**kwargs):
 	thread = threading.current_thread()
 	if isinstance(thread,OuterThread):
@@ -53,7 +61,6 @@ def callWorkerFunction(fun,*args,**kwargs):
 		thread.lock.release()
 		return result.get()
 	return fun(*args,**kwargs)
-
 if __name__ == '__main__':
 	def performance(num):
 		callWorkerFunction(complicatedPrint,'hello %d' % num)

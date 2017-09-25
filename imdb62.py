@@ -4,6 +4,8 @@ import c_syntax_tree as st
 from pos import pos_tags
 import gc
 from memory_profiler import profile
+import shelve
+import time
 documentbase=None
 functionCollection=None
 cacheUpdateNeeded=False
@@ -58,6 +60,11 @@ def writeCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'wt',encoding='utf8') as f:
 		function.writeCacheToStream(f)
+def writeCache3(filename='imdb62_syntaxcache3'):
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	with shelve.open(filename,flag='c') as shl:
+		for key,value in function.getCacheAsDict().items():
+			shl[str(key)] = value
 def readCache(filename='imdb62_syntaxcache',indices=None):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	with open(filename,'rt',encoding='utf8') as f:
@@ -81,6 +88,16 @@ def readCache2(filename='imdb62_syntaxcache2', checkIfNeeded=True,indices=None):
 	with open(filename,'rt',encoding='utf8') as f:
 		documents = None if indices is None else [documentbase.documents[i] for i in indices]
 		function.readCacheFromStream(f,documents=documents)
+def readCache3(filename='imdb62_syntaxcache3',indices=None):
+	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	with shelve.open(filename,'r') as shl:
+		if indices is None:
+			function.setCacheAsDict(dict(shl))
+		else:
+			documents = [documentbase.documents[i] for i in indices]
+			for doc in documents:
+				if doc.identifier in shl:
+					function.writeValueToCache(doc,shl[str(doc.identifier)])
 loadReviews()
 print("loaded reviews")
 def initialize(filename='imdb62_syntaxcache',indices=None):
@@ -92,7 +109,6 @@ def initialize(filename='imdb62_syntaxcache',indices=None):
 	except Exception as e:
 		print("Failed to read cache")
 		print(e)
-	return
 	try:
 		readCache2(indices=indices)
 		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
@@ -100,6 +116,14 @@ def initialize(filename='imdb62_syntaxcache',indices=None):
 	except Exception as e:
 		print("Failed to read cache 2")
 		print(e)
+	try:
+		readCache3(indices=indices)
+		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+		print("read from cache 3: ", [i for i,doc in enumerate(documentbase.documents) if function.valueIsCached(doc)])
+	except Exception as e:
+		print("Failed to read cache 3")
+		print(e)
+
 @profile
 def doMiningTest(base):
 	st.showCMemoryStatistics()
@@ -117,16 +141,20 @@ def doMiningTest(base):
 if __name__ == '__main__':
 	sum_tokens = 0
 	wordlen = [len(doc.text.split(' ')) for doc in documentbase.documents]
-	print(wordlen)
+	#print(wordlen)
 	average = sum(wordlen)/float(len(wordlen))
 	variance = sum( (w-average)**2 for w in wordlen ) / len(wordlen)
 	print("average token count: %f" % average)
 	print("standard deviation: %f" % (variance**0.5))
 	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
-	#initialize(indices)
-	#computeStanfordTrees(indices)
-	readCache(indices=indices)
-	print("obtained trees.")
+	#initialize(indices=indices)
+	time1 = time.perf_counter()
+	readCache(indices=[])
+	time2 = time.perf_counter()
+	readCache3()
+	time3 = time.perf_counter()
+	#writeCache3()
+	print("obtained trees (%f / %f)." % (time2-time1, time3-time2))
 	trainingbase = documentbase.subbase(indices)
 	base = trainingbase.stDocumentbase
 	print("got documentbase.")
@@ -142,5 +170,3 @@ if __name__ == '__main__':
 			#tree.print()
 			stree = stanfordTreeFunction.getValue(documentbase.documents[0])[i]
 			#print(" ".join(x.data for x in stree.leaves))
-	for _ in range(12):
-		doMiningTest(base)

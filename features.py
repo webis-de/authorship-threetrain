@@ -10,6 +10,7 @@ from memory_profiler import profile
 import config
 import concurrent.futures
 import easyparallel
+import heapq
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -87,6 +88,10 @@ class documentFunction:
 		return document.identifier in self.cachedValues
 	def clearCache(self):
 		self.cachedValues = {}
+	def getCacheAsDict(self):
+		return self.cachedValues.copy()
+	def setCacheAsDict(self,dictionary):
+		self.cachedValues.update(dictionary)
 class permanentlyCachableDocumentFunction(documentFunction):
 	def writeCacheToStream(self,stream,indices=None):
 		if indices is None:
@@ -371,19 +376,35 @@ class characterView(view):
 	def getFeature(self, docbase):
 		features = []
 		for n in self.ns:
-			values=set()
+			limit = config.featurelimit_max_character_ngrams[n-1]
 			function = self.getFunction(characterNGramCounterDocumentFunction,n)
-			for doc in docbase.documents:
-				values = values.union(set(function.getValue(doc)))
-			features.append(self.getFunction(characterNGramFeature,n,tuple(values)))
+			if limit is None:
+				values=set()
+				for doc in docbase.documents:
+					values = values.union(set(function.getValue(doc)))
+				features.append(self.getFunction(characterNGramFeature,n,tuple(values)))
+			else:
+				values = Counter()
+				for doc in docbase.documents:
+					values += function.getValue(doc)
+				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
+				features.append(self.getFunction(characterNGramFeature,n,tuple(selection)))
 		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 class lexicalView(view):
 	def getFeature(self, docbase):
-		values=set()
 		function = self.getFunction(tokensCounterDocumentFunction)
-		for doc in docbase.documents:
-			values = values.union(set(function.getValue(doc)))
-		return self.getFunction(wordUnigramFeature,tuple(values))
+		limit = config.featurelimit_max_word_unigrams
+		if limit is None:
+			values=set()
+			for doc in docbase.documents:
+				values = values.union(set(function.getValue(doc)))
+			return self.getFunction(wordUnigramFeature,tuple(values))
+		else:
+			values=Counter()
+			for doc in docbase.documents:
+				values += function.getValue(doc)
+			selection = heapq.nlargest(limit,values,lambda unigram: values[unigram])
+			return self.getFunction(wordUnigramFeature,tuple(selection))
 class syntacticView(view):
 	def __init__(self, ns, supportLowerBound, n, k, remine_trees_until=0):
 		self.ns = ns
@@ -396,10 +417,18 @@ class syntacticView(view):
 		features=[]
 		for n in self.ns:
 			function = self.getFunction(posNGramCounterDocumentFunction,n)
-			values = set()
-			for doc in docbase.documents:
-				values = values.union(set(function.getValue(doc)))
-			features.append(self.getFunction(posNGramFeature,n,tuple(values)))
+			limit = config.featurelimit_max_pos_ngrams[n-1]
+			if limit is None:
+				values = set()
+				for doc in docbase.documents:
+					values = values.union(set(function.getValue(doc)))
+				features.append(self.getFunction(posNGramFeature,n,tuple(values)))
+			else:
+				values = Counter()
+				for doc in docbase.documents:
+					values += function.getValue(doc)
+				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
+				features.append(self.getFunction(posNGramFeature,n,tuple(selection)))
 		base = docbase.stDocumentbase
 		if self.remine_trees_until is 0:
 			treeFeature = self.treeFeature

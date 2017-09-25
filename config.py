@@ -8,11 +8,11 @@ configuration = {
 'num_training': 7, # training documents / author
 'num_unlabelled':200 , # unlabelled documents / author
 'num_test': 20, # test documents / author
-'training_unlabelled': 16*10, # number of unlabelled documents to examine before re-computing classifiers
+'training_unlabelled': 10*16, # number of unlabelled documents to examine before re-computing classifiers
 'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
 'num_threads_mining': 1, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
-'normalize_features': True, # divides the frequency of a token in a document by the total number of tokens in this document,
+'normalize_features': False, # divides the frequency of a token in a document by the total number of tokens in this document,
 			  # similarly the frequency of a character or pos n-gram by the total number of tokens in this document
 			  # not mentioned in the paper, but seems useful
 'undersample': True, # use an undersampling approach to skewed training databases. Not described in the paper, but
@@ -30,14 +30,22 @@ configuration = {
 'random_seed': 43, # random seed to use; set to None for using the default (and always changing) seed
 'scikit_solver': 'saga', #solver to use in sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 'liblinear'
 'scikit_fit_intercept': False, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default False
-'scikit_tolerance': 0.01, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 0.01
+'scikit_tolerance': 0.0001, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 0.01
 'scikit_multi_class': 'multinomial', #parameter for sklearn.linear_model.LogisticRegression. Must be either 'ovr' (one versus rest) or 'multinomial'.
 				#Irrelevant if use_scikit=False. Default 'ovr'
-'scikit_balance_classes': False #whether to balance the classes, so imbalanced training sets (with differing numbers of documents per author) get
+'scikit_balance_classes': False, #whether to balance the classes, so imbalanced training sets (with differing numbers of documents per author) get
 				# compensated. Irrelevant if use_scikit=False. Default False. Should be seen as an alternative to undersample.
 	#if the default values for the five preceding parameters are chosen, the value of use_scikit should be mostly
 	#irrelevant for the outcome of the program (the training process should be identical, the prediction may slightly be altered
 	#due to the fact that scikit normalizes probability outcomes to sum up to 1)
+
+'featurelimit_max_character_ngrams': [None,None,None], # limit the character unigrams, bigrams, trigrams etc. to the most frequent ones.
+							# Must have three entires either None or a natural number or zero. Defaults to [None,None,None]
+							# if n = 1,2,3 and featurelimit_max_character_ngrams[n-1] is None, consider all character n-grams.
+							# Otherwise considers only the featurelimit_max_character_ngrams[n-1] most frequent n-grams
+							# Note that only the case n=3 is relevant.
+'featurelimit_max_word_unigrams': None, #similar. Defauls to None
+'featurelimit_max_pos_ngrams': [None,None,None] #similar. Defauls to [None,None,None]
 }
 glob = globals()
 for (key,value) in configuration.items():

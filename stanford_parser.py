@@ -72,7 +72,7 @@ def parseText(texts):
 	indexfile=tempfile.NamedTemporaryFile()
 	indexfile.write(bytearray("\n".join(handle.name for handle in handles)+"\n",encoding='utf8'))
 	indexfile.flush()
-	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 10 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
+	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 10 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies -maxLength 250 edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
 	#NB this is not partable if sys.path[0] or indexfile.name contains a space.
 	#print(command % (indexfile.name,sys.path[0]))
 	mypath=os.path.dirname(os.path.abspath(__file__))
