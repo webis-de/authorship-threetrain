@@ -192,7 +192,7 @@ def mainfunc():
 	trainIndices = []
 	unlabelledIndices = []
 	testIndices = []
-	author_indices = random.sample(range(3 if config.use_small_cache else 16),config.num_authors)
+	author_indices = random.sample(range(3 if config.use_small_cache else 62),config.num_authors)
 	for i in author_indices:
 		range_max = ((i+1)*1000) if not config.use_small_cache else (i*1000+10)
 		avail = set(range(i*1000,range_max))
