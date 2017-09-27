@@ -12,6 +12,7 @@ import concurrent.futures
 import easyparallel
 import heapq
 import diskdict
+import hashlib
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -35,13 +36,14 @@ def normalizedCounter(*kwds):
 	s = sum(ctr.values())
 	factor = 1.0/sum(ctr.values())
 	return Counter({key: value*factor for (key,value) in ctr.items()})
+document_identifier_hashfun = hashlib.sha256
 class document:
 	def __init__(self, text, author=None):
 		self.text = text
 		self.author=author
 	@cached_property
 	def identifier(self):
-		return hash(self.text)
+		return document_identifier_hashfun(self.text.encode('utf-8')).digest()
 class documentFunction:
 	def __init__(self):
 		#print("created document function",type(self),hasattr(self,'functionCollection'))
@@ -100,6 +102,18 @@ class documentFunction:
 		return self.cachedValues.copy()
 	def setCacheAsDict(self,dictionary):
 		self.cachedValues.update(dictionary)
+	def moveToMemory(self,document):
+		if isinstance(self.cachedValues,diskdict.DiskDict):
+			self.cachedValues.moveToMemory(document.identifier)
+	def removeFromMemory(self,document):
+		if isinstance(self.cachedValues,diskdict.DiskDict):
+			self.cachedValues.removeFromMemory(document.identifier)
+	def forgetDocument(self,document):
+		if document in self.cachedValues:
+			if isinstance(self.cachedValues,diskdict.DiskDict):
+				self.cachedValues.removeFromMemory(document.identifier)
+			else:
+				del self.cachedValues[document.identifier]
 class derivedDocumentFunction(documentFunction):
 	#does not only look at the text but also at the outcome of another document function
 	def __init__(self,predecessorFunctionClass,*kwds):
@@ -141,11 +155,17 @@ class documentFunctionCollection:
 			fun.clearCache()
 			fun.functionCollection = None
 		self.instances = {}
-	def forgetDocument(self,document):
-		ident = document.identifier
+	def forgetDocument(self,document,functionClasses=None):
+		if functionClasses is None:
+			for func in self.instances.values():
+				func.forgetDocument(document)
+		else:
+			for functionClass in functionClasses:
+				if functionClass in self.instances:
+					self.instances[functionClass].forgetDocument(document)
+	def moveToMemory(self,doc):
 		for func in self.instances.values():
-			if isinstance(func.cachedValues,dict) and ident in func.cachedValues:
-				del func.cachedValues[ident]
+			func.moveToMemory(doc)
 class feature(documentFunction):
 	def vectorLength(self):
 		pass

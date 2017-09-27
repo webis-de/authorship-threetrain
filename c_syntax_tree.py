@@ -59,39 +59,35 @@ with open("syntax_tree_function_signatures","r",encoding="utf8") as f:
 			fptr=getattr(libsyntax_tree,name)
 			fptr.restype=restype
 			fptr.argtypes=args
-num_trees = 0
 class syntax_tree:
 	def __init__(self, label, children, data=None):	
-		global num_trees
-		self.label = label
-		self.children = children
+		#self.label = label
+		#self.children = children
 		self.handle = libsyntax_tree.st_prepareTree(label, len(children))
-		self.data=data
+		#self.data=data
 		for i,ch in enumerate(children):
 			libsyntax_tree.st_setTreeChild(self.handle, i, ch.handle)
+			ch.handle = None
 		self.extendable = False
-		num_trees += 1
 	def free(self):
 		#NB: After calling this function, NO OTHER MEMBER FUNCTION may be called.
 		if libsyntax_tree is not None and self.handle is not None:
-			libsyntax_tree.st_shallowFreeTree(self.handle)
+			libsyntax_tree.st_freeTree(self.handle)
 			self.handle = None
 		elif libsyntax_tree is None:
 			raise Exception("Connection to libsyntax_tree lost.")
 	def __del__(self):
-		global num_trees
 		self.free()
-		num_trees -= 1
 	def print(self):
 		libsyntax_tree.st_printTree(self.handle,0)
 	def setExtendable(self, isExtendable=True):
-		self.extendable = isExtendable
+		#self.extendable = isExtendable
 		libsyntax_tree.st_setTreeExtendable(self.handle, isExtendable)
 	def patternOccurs(self, pattern):
 		return libsyntax_tree.st_canMatchPattern(pattern.handle, self.handle)
 	def countNodes(self):
 		return libsyntax_tree.st_countNodes(self.handle)
-	def nicePrint(self,indent=''):
+	'''def nicePrint(self,indent=''):
 		line=indent
 		if self.extendable:
 			line += '...'
@@ -100,7 +96,7 @@ class syntax_tree:
 		for ch in self.children:
 			ch.nicePrint(indent+'  ')
 	def __hash__(self):
-		return hash ((self.label,self.data,tuple(ch.__hash__() for ch in self.children)))
+		return hash ((self.label,self.data,tuple(ch.__hash__() for ch in self.children)))'''
 def copySyntaxTreeFromHandle(handle):
 	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
 		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])

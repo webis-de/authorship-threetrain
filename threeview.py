@@ -47,6 +47,9 @@ def getBalancedSubbase(documentbase,classifier=None,predicted_probabilities=None
 def trainAndPredict(view,documentbase,test_documents):
 	classifier = view.createClassifier(documentbase)
 	return classifier,classifier.predict(test_documents)
+
+#features that are derived from stanfordTreeDocumentFunction
+neededDocumentFunctions = [features.tokensDocumentFunction,features.posDocumentFunction,features.stDocumentDocumentFunction]
 #@profile
 def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None):
 	labelled1 = trainingBase
@@ -62,10 +65,22 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	extra_false2=0
 	extra_false3=0
 	parallelGroup = easyparallel.ParallelismGroup(3)
+	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
+	def prepareDocuments(docs):
+		if functionCollection is not None:
+			for doc in docs:
+				functionCollection.moveToMemory(doc)
+			for func in neededDocumentFunctions:
+				functionCollection.getValues(docs,func)
+			for doc in docs:
+				functionCollection.forgetDocument(doc,[features.stanfordTreeDocumentFunction])
+	prepareDocuments(trainingBase.documents)
+	prepareDocuments(testBase.documents)
 	for iteration in range(num_iterations):
 		gc.collect()
 		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
+		prepareDocuments(choice)
 		print("got choice")
 		'''
 		classifier1 = view1.createClassifier(balanced1)
@@ -129,8 +144,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					extra_true1+=1
 				else:
 					extra_false1+=1
-			if discard and hasattr(unlabelledBase,'functionCollection'):
-				unlabelledBase.functionCollection.forgetDocument(doc)
+			if discard and functionCollection is not None:
+				functionCollection.forgetDocument(doc)
 		labelled1 = labelled1.extend(extraLabelled1)
 		labelled2 = labelled2.extend(extraLabelled2)
 		labelled3 = labelled3.extend(extraLabelled3)
@@ -196,13 +211,6 @@ def mainfunc():
 		imdb62.initialize(indices=indices,filename='small_cache')
 	else:
 		#imdb62.initialize(indices=indices)
-		fun = imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction)
-		print("cached values found: ",list(list(fun.cachedValues.keys())[:10]))
-		print(-4137911097833308936 in fun.cachedValues)
-		for i in indices:
-			doc=imdb62.documentbase.documents[i]
-			if not fun.valueIsCached(doc):
-				raise Exception("document with index %d and identifier %s not cached" % (i,doc.identifier))
 		pass
 	#imdb62.writeCache(filename='small_cache',checkIfNeeded=False)
 	#imdb62.computeStanfordTrees(indices)
@@ -225,7 +233,7 @@ def mainfunc():
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 #@profile
 def runfunc():
-	with diskdict.DiskDict('stanford-trees',mode='r') as dd:
+	with diskdict.DiskDict('stanford-trees') as dd:
 		imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(dd)
 		mainfunc()
 	imdb62.functionCollection.free()

@@ -81,11 +81,6 @@ def readCache(filename='imdb62_syntaxcache',indices=None):
 				return
 			index=int(line)
 			document = documentbase.documents[index]
-			if document.identifier == -4137911097833308936:
-				print("found the searched document!")
-				print("index: ",index)
-				if indices is None or index in indices:
-					print("write to cache!")
 			num_trees = int(f.readline().strip())
 			trees=[]
 			for _ in range(num_trees):

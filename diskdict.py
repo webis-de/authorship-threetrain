@@ -1,41 +1,70 @@
 #aimed to provide the same functionality as shelve with arbitrary picklable keys.
-import dbm
+import sqlite3
+import zlib
 from collections import MutableMapping
 import pickle
 import random
+hashfunc = zlib.adler32
 class DiskDict(MutableMapping):
-	def __init__(self,filename):
-		self.dbm = dbm.open(filename,mode)
-		self.mode = mode
-		self._keys_changed=False
-		#print("DiskDict: opened '%s', found these keys: "%filename,self.dbm.keys())
-		if b'keys' in self.dbm:
-			self._keys = pickle.loads(self.dbm[b'keys'])
-			#print("DiskDict: keys evaluates to ",repr(self._keys))
-			#self._keys = [key for key in self._keys if b'item'+pickle.dumps(key) in self.dbm]
-			#print("DiskDict: filtered:",self._keys[:10])
-		else:
-			self._keys = []
+	def __init__(self,filename,tablename='records'):
+			# use no untrusted value for `tablename`
+		self.connection = sqlite3.connect(filename)
+		self.cursor = self.connection.cursor()
+		self.tablename = tablename
+		self.cursor.execute('CREATE TABLE IF NOT EXISTS `%s` (`py_hash` INT KEY, `py_key` BLOB, `py_value` BLOB)' % tablename)
+		self.cursor.execute('SELECT `py_key` FROM `%s`' % tablename)
+		self._keys = [pickle.loads(row[0]) for row in self.cursor.fetchall()]
+		self.memory_cache = {}
+		print("DiskDict: keys: ",repr(self._keys[:10]))
 	def __iter__(self):
 		return iter(self._keys)
 	def __len__(self):
 		return len(self._keys)
 	def __contains__(self,key):
 		return key in self._keys
+	def moveToMemory(self,key):
+		pickled = pickle.dumps(key)
+		h = hashfunc(pickled)
+		if h in self.memory_cache:
+			mem = self.memory_cache[h]
+		else:
+			mem={}
+			self.memory_cache[h]=mem
+		if pickled in mem:
+			return
+		self.cursor.execute('SELECT `py_value` FROM `%s` WHERE `py_hash` == ? AND `py_key` == ?' % self.tablename, (h,pickled))
+		mem[pickled] = pickle.loads(self.cursor.fetchone()[0])
+	def removeFromMemory(self,key):
+		pickled = pickle.dumps(key)
+		h = hashfunc(pickled)
+		mem=self.memory_cache[h]
+		del mem[pickled]
+		if not mem:
+			del self.memory_cache[h]
 	def __getitem__(self,key):
-		dkey = b'item'+pickle.dumps(key)
-		return pickle.loads(self.dbm[dkey])
+		pickled = pickle.dumps(key)
+		h = hashfunc(pickled)
+		if h in self.memory_cache:
+			mem = self.memory_cache[h]
+			if pickled in mem:
+				return mem[pickled]
+		self.cursor.execute('SELECT `py_value` FROM `%s` WHERE `py_hash` == ? AND `py_key` == ?' % self.tablename, (h,pickled))
+		return pickle.loads(self.cursor.fetchone()[0])
 	def __setitem__(self,key,value):
-		if not key in self._keys:
+		pickled = pickle.dumps(key)
+		h=hashfunc(pickled)
+		if key in self._keys:
+			self.cursor.execute('UPDATE `%s` SET `py_value` = ? WHERE `py_hash` == ? AND `py_key`== ?' % self.tablename,\
+				(pickle.dumps(value),h,pickled))
+		else:
+			self.cursor.execute('INSERT INTO `%s` (`py_hash`,`py_key`,`py_value`) VALUES (?,?,?)' % self.tablename,\
+				(h,pickled,pickle.dumps(value)))
 			self._keys.append(key)
-			self._keys_changed = True
-		dkey = b'item'+pickle.dumps(key)
-		dvalue = pickle.dumps(value)
-		self.dbm[dkey] = dvalue
 	def __delitem__(self,key):
-		del self.dbm[b'item'+pickle.dumps(key)]
+		pickled = pickle.dumps(key)
+		h=hashfunc(pickled)
+		self.cursor.execute('DELETE FROM `%s` WHERE `py_hash` == ? AND `py_key == ?`' % self.tablename, (h,pickled))
 		self.keys.remove(key)
-		self._keys_changed = True
 	def get(self,key,default=None):
 		if key in self:
 			return self[key]
@@ -45,17 +74,17 @@ class DiskDict(MutableMapping):
 	def __exit__(self,type,value,traceback):
 		self.close()
 	def close(self):
-		if self.dbm is not None:
-			print("DiskDict: closing. self._keys: ",self._keys[:10])
-			if self._keys_changed:
-				self.dbm[b'keys'] = pickle.dumps(self._keys)
-			print("self.dbm.keys(): ",repr(list(self.dbm.keys())[:10]))
-			self.dbm.close()
-			self.dbm = None
+		if self.cursor is not None:
+			print("DiskDict: closing. self._keys: ",repr(self._keys[:10]))
+			self.connection.commit()
+			self.cursor.close()
+			self.cursor=None
+			self.connection.close()
+			self.connection=None
 	def __del__(self):
 		self.close()
 if __name__ == '__main__':
 	with DiskDict('examplediskdict') as d:
 		print("found these keys: ",','.join(repr(x) for x in d.keys()))
 		print("found these values",','.join(repr(x) for x in d.values()))
-	d[len(d)] = random.random()
+		d[len(d)] = random.random()
