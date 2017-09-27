@@ -56,9 +56,8 @@ class OuterThread(threading.Thread):
 def callWorkerFunction(fun,*args,**kwargs):
 	thread = threading.current_thread()
 	if isinstance(thread,OuterThread):
-		thread.lock.acquire()
-		result = thread.pool.apply_async(fun,args,kwargs)
-		thread.lock.release()
+		with thread.lock:
+			result=thread.pool.apply_async(fun,args,kwargs)
 		return result.get()
 	return fun(*args,**kwargs)
 if __name__ == '__main__':
@@ -69,7 +68,6 @@ if __name__ == '__main__':
 		print("goint to print ",message," ...")
 		os.system('sleep 4')
 		print(message)
-
 	group = ParallelismGroup(4)
 	print(group.map(performance,range(12)))
 	print([performance(j) for j in range(20,24)])

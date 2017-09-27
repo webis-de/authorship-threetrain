@@ -141,6 +141,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 			parallelGroup.add_branch(getBalancedSubbase,labelled2,classifier2)
 			parallelGroup.add_branch(getBalancedSubbase,labelled3,classifier3)
 			balanced1,balanced2,balanced3 = parallelGroup.get_results()
+		else:
+			balanced1,balanced2,balanced3 = labelled1,labelled2,labelled3
 		classifier1.clearCache()
 		classifier2.clearCache()
 		classifier3.clearCache()

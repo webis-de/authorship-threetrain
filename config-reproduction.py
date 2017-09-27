@@ -1,23 +1,24 @@
 import random
 import numpy
+	# this is the configuration file to get the same experiment as in (Qian et al. 2014)
 configuration = {
 'do_fake' : False, # set to true to insert only truely labelled documents
 'use_small_cache':False, # set to true to use a small cache. Restrictions: num_authors <= 3, num_training + num_unlabelled + num_test <= 10
 		# reduces startup time, useful to search errors
-'num_authors': 10, # number of authors to include into training
-'num_training': 7, # training documents / author
-'num_unlabelled':200 , # unlabelled documents / author
-'num_test': 20, # test documents / author
-'training_unlabelled': 10*16, # number of unlabelled documents to examine before re-computing classifiers
-'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
-'num_threads_mining': 1, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
+'num_authors': 62, # number of authors to include into training
+'num_training': 10, # training documents / author
+'num_unlabelled':790, # unlabelled documents / author
+'num_test': 200, # test documents / author
+'training_unlabelled': 62*8, # number of unlabelled documents to examine before re-computing classifiers
+'training_iterations': 60, # number of training iterations (=number of re-trained classifiers) 
+'num_threads_mining': 6, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
 'normalize_features': False, # divides the frequency of a token in a document by the total number of tokens in this document,
 			  # similarly the frequency of a character or pos n-gram by the total number of tokens in this document
 			  # not mentioned in the paper, but seems useful
 'undersample': False, # use an undersampling approach to skewed training databases. Not described in the paper, but
 		   # apparently highly useful when using liblinear
-'remine_trees_until': 1, # number of times the syntactic tree patterns are re-mined. Normally, when the classifiers
+'remine_trees_until': 12, # number of times the syntactic tree patterns are re-mined. Normally, when the classifiers
 			 # are trained, completely new trees are mined. This gets expensive (in terms of time and space)
 			 # when a lot of documents are available. Therefore, only the first times, new trees are mined
 			 # and afterwards, the old trees are re-used. Set to 0 to always re-mine trees. Set to 1 to mine trees exactly once.
@@ -26,7 +27,7 @@ configuration = {
 'num_bins': 10, # n value from the Kim paper. Number of bins to use for the binned information gain. A higher number
 	      # approximates the actual information gain better but make the estimates worse, increasing memory and time requirements
 'max_embeddable_edges': 2, # k value from the Kim paper. Mine k-ee tree patterns, i.e. patterns with <= k embedded edges
-'use_scikit': True, # set false to use liblinear
+'use_scikit': False, # set false to use liblinear
 'random_seed': 43, # random seed to use; set to None for using the default (and always changing) seed
 'scikit_solver': 'saga', #solver to use in sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default 'liblinear'
 'scikit_fit_intercept': False, #parameter for sklearn.linear_model.LogisticRegression. Irrelevant if use_scikit=False. Default False

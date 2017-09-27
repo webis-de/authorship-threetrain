@@ -96,8 +96,9 @@ def readCache3(filename='imdb62_syntaxcache3',indices=None):
 		else:
 			documents = [documentbase.documents[i] for i in indices]
 			for doc in documents:
-				if doc.identifier in shl:
-					function.writeValueToCache(doc,shl[str(doc.identifier)])
+				key=str(doc.identifier)
+				if key in shl:
+					function.writeValueToCache(doc,shl[key])
 loadReviews()
 print("loaded reviews")
 def initialize(filename='imdb62_syntaxcache',indices=None):
@@ -109,6 +110,7 @@ def initialize(filename='imdb62_syntaxcache',indices=None):
 	except Exception as e:
 		print("Failed to read cache")
 		print(e)
+	return
 	try:
 		readCache2(indices=indices)
 		function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
