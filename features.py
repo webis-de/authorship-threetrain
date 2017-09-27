@@ -11,6 +11,7 @@ import config
 import concurrent.futures
 import easyparallel
 import heapq
+import diskdict
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -46,7 +47,12 @@ class documentFunction:
 		#print("created document function",type(self),hasattr(self,'functionCollection'))
 		if not hasattr(self,'functionCollection'):
 			raise Exception("no function collection?")
-		self.cachedValues = {}
+		self.cachedValues={}
+	def setCacheDict(self,dictionary):
+		self.cachedValues=dictionary
+	def closeCache(self):
+		if isinstance(self.cachedValues,diskdict.DiskDict):
+			self.cachedValues.close()
 	'''def __del__(self):
 		print("delete document function",type(self))'''
 	def getValue(self,document):
@@ -87,41 +93,13 @@ class documentFunction:
 	def valueIsCached(self, document):
 		return document.identifier in self.cachedValues
 	def clearCache(self):
+		if isinstance(self.cachedValues,diskdict.DiskDict):
+			self.cachedValues.close()
 		self.cachedValues = {}
 	def getCacheAsDict(self):
 		return self.cachedValues.copy()
 	def setCacheAsDict(self,dictionary):
 		self.cachedValues.update(dictionary)
-class permanentlyCachableDocumentFunction(documentFunction):
-	def writeCacheToStream(self,stream,indices=None):
-		if indices is None:
-			indices = list(self.cachedValues)
-		for i in indices:
-			if not i in self.cachedValues:
-				print(i)
-				raise Exception("index does not occur in cache")
-		#pickle.dump(indices,stream)
-		stream.write(",".join(str(i) for i in indices)+"\n")
-		for i in indices:
-			self.writeValueToStream(stream,self.cachedValues[i])
-	def readCacheFromStream(self,stream,documents=None):
-		#indices=pickle.load(stream)
-		keys = [int(k) for k in stream.readline().strip().split(',')]
-		if documents is None:
-			for k in keys:
-				self.cachedValues[k] = self.readValueFromStream(stream)
-		else:
-			dkeys = [d.identifier for d in documents]
-			for k in keys:
-				val = self.readValueFromStream(stream)
-				if k in dkeys:
-					self.cachedValues[k] = val
-	def writeValueToStream(self,stream,value):
-		#writes a value (i.e. the outcome of some mapping-call) to a stream
-		raise NotImplementedError
-	def readValueFromStream(self,stream):
-		#reads this value back
-		raise NotImplementedError
 class derivedDocumentFunction(documentFunction):
 	#does not only look at the text but also at the outcome of another document function
 	def __init__(self,predecessorFunctionClass,*kwds):
@@ -163,6 +141,11 @@ class documentFunctionCollection:
 			fun.clearCache()
 			fun.functionCollection = None
 		self.instances = {}
+	def forgetDocument(self,document):
+		ident = document.identifier
+		for func in self.instances.values():
+			if isinstance(func.cachedValues,dict) and ident in func.cachedValues:
+				del func.cachedValues[ident]
 class feature(documentFunction):
 	def vectorLength(self):
 		pass
@@ -242,22 +225,10 @@ class view:
 		return documentClassifier(trainingDocbase,self.getFeature(trainingDocbase))
 
 # now to the concrete stuff
-class stanfordTreeDocumentFunction(permanentlyCachableDocumentFunction):
+class stanfordTreeDocumentFunction(documentFunction):
 	# to each document, return a list of stanford trees, encoding the tokenization, pos-tagging and syntactic structure
 	def mappingv(self,documents):
 		return easyparallel.callWorkerFunction(stanford_parser.parseText,[d.text for d in documents])
-	def writeValueToStream(self,stream,trees):
-		#pickle.dump(len(trees),stream)
-		stream.write(str(len(trees))+"\n")
-		for tree in trees:
-			tree.writeStream(stream)
-	def readValueFromStream(self,stream):
-		#length = pickle.load(stream)
-		length = int(stream.readline().strip())
-		result = [None]*length
-		for i in range(length):
-			result[i] = stanford_parser.readTreeFromStream(stream)
-		return result
 class tokensDocumentFunction(derivedDocumentFunction):
 	#for each document, returns a list of tokens
 	def __init__(self):

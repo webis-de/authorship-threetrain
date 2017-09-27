@@ -6,6 +6,11 @@ import gc
 from memory_profiler import profile
 import shelve
 import time
+import queue
+import threading
+import itertools
+import diskdict
+import sys
 documentbase=None
 functionCollection=None
 cacheUpdateNeeded=False
@@ -67,19 +72,27 @@ def writeCache3(filename='imdb62_syntaxcache3'):
 			shl[str(key)] = value
 def readCache(filename='imdb62_syntaxcache',indices=None):
 	function = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	read_indices=[]
 	with open(filename,'rt',encoding='utf8') as f:
 		while True:
 			line=f.readline()
 			if not line:
+				print("read: ",len(read_indices)," items")
 				return
 			index=int(line)
 			document = documentbase.documents[index]
+			if document.identifier == -4137911097833308936:
+				print("found the searched document!")
+				print("index: ",index)
+				if indices is None or index in indices:
+					print("write to cache!")
 			num_trees = int(f.readline().strip())
 			trees=[]
 			for _ in range(num_trees):
 				trees.append(stanford_parser.readTreeFromStream(f))
 			if indices is None or index in indices:
 				function.writeValueToCache(document, trees)
+				read_indices.append(index)
 			else:
 				for tr in trees:
 					tr.recursiveFree()
@@ -99,7 +112,48 @@ def readCache3(filename='imdb62_syntaxcache3',indices=None):
 				key=str(doc.identifier)
 				if key in shl:
 					function.writeValueToCache(doc,shl[key])
+class asynchronousLoader:
+	def __init__(self):
+		self.orderIndex = 0
+		self.orders = []
+		self.requestQueue = queue.Queue()
+		self.responseQueue = queue.Queue()
+		self.callback = None
+		self.thread = threading.Thread(target=self.run_thread)
+		self.thread.setDaemon(True)
+		self.thread.start()
+	def setCallback(self,callback):
+		self.callback = callback
+	def run_thread(self):
+		while True:
+			orders = [self.requestQueue.get()]
+			try:
+				while True:
+					orders.append(self.requestQueue.get_nowait())
+			except queue.Empty:
+				pass
+			indices = list(itertools.chain(*[order[1] for order in orders]))
+			readCache(indices=indices)
+			if self.callback is not None:
+				self.callback(indices)
+			for order in orders:
+				self.responseQueue.put(order[0])
+	def put_order(self,indices):
+		num = self.orderIndex
+		self.orderIndex += 1
+		self.requestQueue.put( (num,indices[:]) )
+		return num
+	def wait_order(self,order):
+		if order in self.orders:
+			self.orders.remove(order)
+		else:
+			while True:
+				found = self.responseQueue.get()
+				if found == order:
+					return
+				self.orders.append(found)
 loadReviews()
+loader = asynchronousLoader()
 print("loaded reviews")
 def initialize(filename='imdb62_syntaxcache',indices=None):
 	try:
@@ -141,34 +195,15 @@ def doMiningTest(base):
 	print("%d trees exist." % st.num_trees)
 
 if __name__ == '__main__':
-	sum_tokens = 0
-	wordlen = [len(doc.text.split(' ')) for doc in documentbase.documents]
-	#print(wordlen)
-	average = sum(wordlen)/float(len(wordlen))
-	variance = sum( (w-average)**2 for w in wordlen ) / len(wordlen)
-	print("average token count: %f" % average)
-	print("standard deviation: %f" % (variance**0.5))
-	indices=list(range(40))+list(range(1000,1040))+list(range(2000,2040))
-	#initialize(indices=indices)
-	time1 = time.perf_counter()
-	readCache(indices=[])
-	time2 = time.perf_counter()
-	readCache3()
-	time3 = time.perf_counter()
-	#writeCache3()
-	print("obtained trees (%f / %f)." % (time2-time1, time3-time2))
-	trainingbase = documentbase.subbase(indices)
-	base = trainingbase.stDocumentbase
-	print("got documentbase.")
-	testpattern = st.syntax_tree(16,[]) #particle
-	testpattern.setExtendable(True)
-	print(base.support(testpattern))
-	print(base.conditionalEntropy(testpattern,10))
-	stanfordTreeFunction = functionCollection.getFunction(features.stanfordTreeDocumentFunction)
-	doc=functionCollection.getValue(documentbase.documents[0],features.stDocumentDocumentFunction)
-	print(doc.frequency(testpattern))
-	for i,tree in enumerate(doc.trees):
-		if tree.patternOccurs(testpattern):
-			#tree.print()
-			stree = stanfordTreeFunction.getValue(documentbase.documents[0])[i]
-			#print(" ".join(x.data for x in stree.leaves))
+	fun =functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+	indices=None
+	if len(sys.argv) > 1:
+		i = int(sys.argv[1])
+		if 0 <= i and i < 7:
+			indices = list(range(i*10000,(i+1)*10000))
+	with diskdict.DiskDict('stanford-trees') as dd:
+		fun.setCacheDict(dd)
+		print("keys available: ",list(fun.cachedValues.keys())[:10])
+		print(-4137911097833308936 in fun.cachedValues)
+		readCache(indices=indices)
+		print(-4137911097833308936 in fun.cachedValues)

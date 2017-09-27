@@ -11,6 +11,7 @@ import heapq
 import config
 import concurrent.futures
 import easyparallel
+import diskdict
 #from memory_profiler import profile
 #tracemalloc.start(1024)
 def getSuccessRate(testBase,classifier):
@@ -96,7 +97,9 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		for l1,l2,l3,doc in zip(classified1,classified2,classified3,choice):
 			print("classified: %s, %s, %s. true: %s"%(l1,l2,l3,doc.author))
 			#print(p1,p2,p3)
+			discard=True
 			if l1 == l2:
+				discard=False
 				if config.do_fake:
 					extraLabelled3.append(doc)
 				else:
@@ -106,6 +109,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 				else:
 					extra_false3+=1
 			if l1 == l3:
+				discard=False
 				if config.do_fake:
 					extraLabelled2.append(doc)
 				else:
@@ -115,6 +119,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 				else:
 					extra_false2+=1
 			if l2 == l3:
+				discard=False
 				if config.do_fake:
 					extraLabelled1.append(doc)
 				else:
@@ -124,6 +129,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					extra_true1+=1
 				else:
 					extra_false1+=1
+			if discard and hasattr(unlabelledBase,'functionCollection'):
+				unlabelledBase.functionCollection.forgetDocument(doc)
 		labelled1 = labelled1.extend(extraLabelled1)
 		labelled2 = labelled2.extend(extraLabelled2)
 		labelled3 = labelled3.extend(extraLabelled3)
@@ -188,7 +195,15 @@ def mainfunc():
 		print("use small cache.")
 		imdb62.initialize(indices=indices,filename='small_cache')
 	else:
-		imdb62.initialize(indices=indices)
+		#imdb62.initialize(indices=indices)
+		fun = imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction)
+		print("cached values found: ",list(list(fun.cachedValues.keys())[:10]))
+		print(-4137911097833308936 in fun.cachedValues)
+		for i in indices:
+			doc=imdb62.documentbase.documents[i]
+			if not fun.valueIsCached(doc):
+				raise Exception("document with index %d and identifier %s not cached" % (i,doc.identifier))
+		pass
 	#imdb62.writeCache(filename='small_cache',checkIfNeeded=False)
 	#imdb62.computeStanfordTrees(indices)
 	#imdb62.readCache(filename='small_cache')
@@ -210,7 +225,9 @@ def mainfunc():
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 #@profile
 def runfunc():
-	mainfunc()
+	with diskdict.DiskDict('stanford-trees',mode='r') as dd:
+		imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(dd)
+		mainfunc()
 	imdb62.functionCollection.free()
 	del imdb62.functionCollection,imdb62.documentbase
 	for _ in range(2):
