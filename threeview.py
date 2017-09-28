@@ -1,19 +1,30 @@
+import config
+if config.debug_memory:
+	import tracemalloc
+	tracemalloc.start(1024)
+	import objgraph
 import imdb62
 import features
 import random
 import gc
-import tracemalloc
 import c_syntax_tree
 import regression
 from collections import Counter
 from functools import reduce
 import heapq
-import config
 import concurrent.futures
 import easyparallel
 import diskdict
 #from memory_profiler import profile
-#tracemalloc.start(1024)
+def showMemoryStatistics():
+	for stat in tracemalloc.take_snapshot().statistics('traceback')[:5]:
+		print(stat)
+		prevLine=None
+		for line in stat.traceback.format():
+			if line is prevLine:
+				continue
+			print(line)
+			prevLine = line
 def getSuccessRate(testBase,classifier):
 	return len([None for (pred,doc) in zip(classifier.predict(testBase.documents),testBase.documents) if pred == doc.author])
 def getAccumulatedPrediction(testBase,*classifiers):
@@ -68,12 +79,28 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
 	def prepareDocuments(docs):
 		if functionCollection is not None:
-			for doc in docs:
-				functionCollection.moveToMemory(doc)
-			for func in neededDocumentFunctions:
-				functionCollection.getValues(docs,func)
-			for doc in docs:
-				functionCollection.forgetDocument(doc,[features.stanfordTreeDocumentFunction])
+			for i in range(0,len(docs),5000):
+				chunk = docs[i:i+5000]
+				#print("move %d documents to memory..." % len(chunk))
+				#for doc in docs:
+				#	functionCollection.moveToMemory(doc)
+				functionCollection.moveToMemory(chunk)
+				#print("compute needed document functions...")
+				for func in neededDocumentFunctions:
+					functionCollection.getValues(chunk,func)
+				#print("forget unnecessary document functions...")
+				for doc in chunk:
+					functionCollection.forgetDocument(doc,[features.stanfordTreeDocumentFunction])
+				#print("prepared %d documents." % len(chunk))
+				gc.collect()
+				if config.debug_memory:
+					print("garbage: ",len(gc.garbage))
+					print("50 most common types:")
+					objgraph.show_most_common_types(limit=50)
+					c_syntax_tree.showCMemoryStatistics()
+					showMemoryStatistics()
+					functionCollection.showMemoryStatistics()
+					functionCollection.getFunction(features.stanfordTreeDocumentFunction).cachedValues.showMemoryStatistics()
 	prepareDocuments(trainingBase.documents)
 	prepareDocuments(testBase.documents)
 	for iteration in range(num_iterations):
@@ -189,6 +216,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	return pred
 #@profile
 def mainfunc():
+	print("begin threeview.mainfunc")
 	trainIndices = []
 	unlabelledIndices = []
 	testIndices = []

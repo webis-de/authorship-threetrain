@@ -13,26 +13,6 @@ typedef int st_label;
 
 #define COUNT_MALLOCS
 
-#ifdef COUNT_MALLOCS
-int num_allocations=0;
-void* getmem(size_t s) {
-	__sync_fetch_and_add(&num_allocations,1);
-	return malloc(s);
-}
-void freemem(void* ptr) {
-	__sync_fetch_and_sub(&num_allocations,1);
-	free(ptr);
-}
-void showMemoryInformation() {
-	printf("%d memory blocks held.\n",num_allocations);
-}
-#else
-#define getmem malloc
-#define freemem free
-void showMemoryInformation() {
-	printf("memory allocations not tracked.\n");
-}
-#endif
 
 struct st_syntax_tree {
 	st_label label;
@@ -45,6 +25,42 @@ struct st_syntax_tree {
 	struct st_syntax_tree* original;
 };
 typedef struct st_syntax_tree st_tree;
+
+#ifdef COUNT_MALLOCS
+
+#include <malloc.h>
+int num_allocations=0;
+int num_trees = 0;
+ssize_t allocated_memory=0;
+void* getmem(size_t s) {
+	__sync_fetch_and_add(&num_allocations,1);
+	void* ptr= malloc(s);
+	size_t allocated = malloc_usable_size(ptr);
+	/*
+	if (allocated > s) {
+		printf("requested %lu bytes, got %lu\n", s, allocated);
+	}
+	*/
+	__sync_fetch_and_add(&allocated_memory,allocated);
+	return ptr;
+}
+void freemem(void* ptr) {
+	__sync_fetch_and_sub(&num_allocations,1);
+	__sync_fetch_and_sub(&allocated_memory,malloc_usable_size(ptr));
+	free(ptr);
+}
+void showMemoryInformation() {
+	printf("%d memory blocks held with %ld bytes.\n",num_allocations,allocated_memory);
+	printf("%d trees held of size %lu + %lu bytes each\n", num_trees, sizeof(st_tree), sizeof(st_tree*));
+}
+#else
+#define getmem malloc
+#define freemem free
+void showMemoryInformation() {
+	printf("memory allocations not tracked.\n");
+}
+#endif
+
 void st_freeTree(st_tree* t) {
 	int i;
 	for (i=0; i<t->num_children; i++) {
@@ -52,10 +68,16 @@ void st_freeTree(st_tree* t) {
 	}
 	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) freemem(t->children);
 	freemem(t);
+#ifdef COUNT_MALLOCS
+	__sync_fetch_and_sub(&num_trees,1);
+#endif
 }
 void st_shallowFreeTree(st_tree* t) {
 	if (t->children != NULL && ! (t->flags & TREEFLAG_PACKED_CHILDREN)) freemem(t->children);
 	freemem(t);
+#ifdef COUNT_MALLOCS
+	__sync_fetch_and_sub(&num_trees,1);
+#endif
 }
 st_tree* st_createTree(st_label label, unsigned int num_children, st_tree** children) {
 	st_tree* result = (st_tree*) getmem(sizeof(st_tree));
@@ -71,6 +93,9 @@ st_tree* st_createTree(st_label label, unsigned int num_children, st_tree** chil
 	} else {
 		result->children=NULL;
 	}
+#ifdef COUNT_MALLOCS
+	__sync_fetch_and_add(&num_trees,1);
+#endif
 	return result;
 }
 st_tree* st_prepareTree(st_label label, unsigned int num_children) {
@@ -87,6 +112,9 @@ st_tree* st_prepareTree(st_label label, unsigned int num_children) {
 		result->children = NULL;
 	}
 	result->flags = TREEFLAG_PACKED_CHILDREN;
+#ifdef COUNT_MALLOCS
+	__sync_fetch_and_add(&num_trees,1);
+#endif
 	return result;
 }
 void st_setTreeChild(st_tree* parent, unsigned int index, st_tree* child) {

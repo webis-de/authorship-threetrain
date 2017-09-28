@@ -3,7 +3,7 @@ import stanford_parser
 import c_syntax_tree as st
 from pos import pos_tags
 import gc
-from memory_profiler import profile
+#from memory_profiler import profile
 import shelve
 import time
 import queue
@@ -148,7 +148,7 @@ class asynchronousLoader:
 					return
 				self.orders.append(found)
 loadReviews()
-loader = asynchronousLoader()
+#loader = asynchronousLoader()
 print("loaded reviews")
 def initialize(filename='imdb62_syntaxcache',indices=None):
 	try:
@@ -175,7 +175,7 @@ def initialize(filename='imdb62_syntaxcache',indices=None):
 		print("Failed to read cache 3")
 		print(e)
 
-@profile
+#@profile
 def doMiningTest(base):
 	st.showCMemoryStatistics()
 	print("%d trees exist." % st.num_trees)
@@ -190,6 +190,7 @@ def doMiningTest(base):
 	print("%d trees exist." % st.num_trees)
 
 if __name__ == '__main__':
+	loader = asynchronousLoader()
 	fun =functionCollection.getFunction(features.stanfordTreeDocumentFunction)
 	indices=None
 	if len(sys.argv) > 1:

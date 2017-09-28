@@ -6,13 +6,13 @@ from werkzeug import cached_property
 from collections import Counter
 import pos
 import regression
-from memory_profiler import profile
 import config
 import concurrent.futures
 import easyparallel
 import heapq
 import diskdict
 import hashlib
+import pickle
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -102,14 +102,14 @@ class documentFunction:
 		return self.cachedValues.copy()
 	def setCacheAsDict(self,dictionary):
 		self.cachedValues.update(dictionary)
-	def moveToMemory(self,document):
+	def moveToMemory(self,documents):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
-			self.cachedValues.moveToMemory(document.identifier)
+			self.cachedValues.moveToMemory([document.identifier for document in documents])
 	def removeFromMemory(self,document):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
 			self.cachedValues.removeFromMemory(document.identifier)
 	def forgetDocument(self,document):
-		if document in self.cachedValues:
+		if document.identifier in self.cachedValues:
 			if isinstance(self.cachedValues,diskdict.DiskDict):
 				self.cachedValues.removeFromMemory(document.identifier)
 			else:
@@ -134,9 +134,9 @@ class documentFunctionCollection:
 	#a set of document functions that may be derived from each other
 	def __init__(self):
 		self.instances={}
-		'''print("created documentFunctionCollection",type(self))
+		print("CREATED documentFunctionCollection",type(self))
 	def __del__(self):
-		print("deleted documentFunctionCollection")'''
+		print("DELETED documentFunctionCollection")
 	def getFunction(self,functionClass,*kwds):
 		key = (functionClass,kwds)
 		if key not in self.instances:
@@ -156,16 +156,33 @@ class documentFunctionCollection:
 			fun.functionCollection = None
 		self.instances = {}
 	def forgetDocument(self,document,functionClasses=None):
+		print("asked functionCollection to forget document ",document.identifier)
 		if functionClasses is None:
 			for func in self.instances.values():
 				func.forgetDocument(document)
 		else:
 			for functionClass in functionClasses:
-				if functionClass in self.instances:
-					self.instances[functionClass].forgetDocument(document)
-	def moveToMemory(self,doc):
+				key = (functionClass,())
+				if key in self.instances:
+					self.instances[key].forgetDocument(document)
+				else:
+					print("Asked to forget document ",document.identifier," for class ",functionClass,", but have no instance for this.")
+	def moveToMemory(self,docs):
 		for func in self.instances.values():
-			func.moveToMemory(doc)
+			func.moveToMemory(docs)
+	def showMemoryStatistics(self):
+		for key,value in self.instances.items():
+			print("key: ",key)
+			print("type(value): ",type(value))
+			if isinstance(value.cachedValues,diskdict.DiskDict):
+				print(key[0]," (",*key[1],") has a DiskDict as cache.")
+			elif isinstance(value.cachedValues,dict):
+				print(key[0]," (",*key[1],") has a pickled cache size of ",len(pickle.dumps(value.cachedValues)),\
+										" and ",len(value.cachedValues)," cached values.")
+			else:
+				print("value: ",value)
+				print("value.cachedValues: ",value.cachedValues)
+				raise Exception("Unexpected type for cachedValues.")
 class feature(documentFunction):
 	def vectorLength(self):
 		pass
@@ -403,7 +420,6 @@ class syntacticView(view):
 		self.n = n
 		self.k = k
 		self.remine_trees_until = None if remine_trees_until == 0 else remine_trees_until
-	#@profile
 	def getFeature(self,docbase):
 		features=[]
 		for n in self.ns:

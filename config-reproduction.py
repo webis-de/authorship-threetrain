@@ -9,7 +9,7 @@ configuration = {
 'num_training': 10, # training documents / author
 'num_unlabelled':790, # unlabelled documents / author
 'num_test': 200, # test documents / author
-'training_unlabelled': 62*8, # number of unlabelled documents to examine before re-computing classifiers
+'training_unlabelled': int(62*790*.01), # number of unlabelled documents to examine before re-computing classifiers
 'training_iterations': 60, # number of training iterations (=number of re-trained classifiers) 
 'num_threads_mining': 6, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
@@ -46,7 +46,9 @@ configuration = {
 							# Otherwise consider only the featurelimit_max_character_ngrams[n-1] most frequent n-grams.
 							# Note that only the case n=3 is relevant.
 'featurelimit_max_word_unigrams': None, #similar. Defauls to None
-'featurelimit_max_pos_ngrams': [None,None,None] #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
+'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
+
+'debug_memory': False # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
 }
 glob = globals()
 for (key,value) in configuration.items():
