@@ -77,7 +77,7 @@ class DiskDict(MutableMapping):
 	def showMemoryStatistics(self):
 		print("DiskDict: Remembered %d values" % (sum(len(v) for v in self.memory_cache.values())))
 	def __getitem__(self,key):
-		if not key in _keys:
+		if not key in self._keys:
 			raise KeyError
 		pickled = pickle.dumps(key)
 		h = hashfunc(pickled)
