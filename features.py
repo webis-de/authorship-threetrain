@@ -156,7 +156,7 @@ class documentFunctionCollection:
 			fun.functionCollection = None
 		self.instances = {}
 	def forgetDocument(self,document,functionClasses=None):
-		print("asked functionCollection to forget document ",document.identifier)
+		#print("asked functionCollection to forget document ",document.identifier)
 		if functionClasses is None:
 			for func in self.instances.values():
 				func.forgetDocument(document)

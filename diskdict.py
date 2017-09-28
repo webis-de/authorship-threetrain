@@ -40,12 +40,14 @@ class DiskDict(MutableMapping):
 		self.connection.commit()
 		return result
 	def fetchMany(self,keys):
+		keys = [k for k in keys if k in self._keys]
 		pickled = [pickle.dumps(key) for key in keys]
 		hashes = [hashfunc(p) for p in pickled]
 		return self._fetchMany(pickled,hashes)
 	def values(self):
 		return self.fetchMany(self._keys)
 	def moveToMemory(self,keys):
+		keys = [k for k in keys if k in self._keys]
 		pickled = [pickle.dumps(key) for key in keys]
 		hashes = [hashfunc(p) for p in pickled]
 		mems = []
@@ -64,13 +66,19 @@ class DiskDict(MutableMapping):
 	def removeFromMemory(self,key):
 		pickled = pickle.dumps(key)
 		h = hashfunc(pickled)
+		if not h in self.memory_cache:
+			return
 		mem=self.memory_cache[h]
+		if not pickled in mem:
+			return
 		del mem[pickled]
 		if not mem:
 			del self.memory_cache[h]
 	def showMemoryStatistics(self):
 		print("DiskDict: Remembered %d values" % (sum(len(v) for v in self.memory_cache.values())))
 	def __getitem__(self,key):
+		if not key in _keys:
+			raise KeyError
 		pickled = pickle.dumps(key)
 		h = hashfunc(pickled)
 		if h in self.memory_cache:
@@ -94,6 +102,8 @@ class DiskDict(MutableMapping):
 				(h,pickled,pickle.dumps(value)))
 			self._keys.append(key)
 	def __delitem__(self,key):
+		if not key in self._keys:
+			raise KeyError
 		pickled = pickle.dumps(key)
 		h=hashfunc(pickled)
 		if h in self.memory_cache:
