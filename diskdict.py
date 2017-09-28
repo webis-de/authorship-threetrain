@@ -30,14 +30,14 @@ class DiskDict(MutableMapping):
 		query='INSERT INTO `%s` (`py_hash`,`py_key`) VALUES (?,?)'%self.requested_name
 		args =zip(hashes,pickled) 
 		self.cursor.executemany(query,args)
-		self.cursor.commit()
+		self.connection.commit()
 		self.cursor.execute('SELECT `py_value` FROM `%s` INNER JOIN `%s` USING (`py_hash`,`py_key`)' % (self.requested_name,self.tablename))
 		#result = [pickle.loads(row[0]) for row in self.cursor.fetchall()] # works but for some reason produces MANY blocks of 52 bytes.
 		fetched = self.cursor.fetchall()
 		column = [row[0] for row in fetched]
 		result = [pickle.loads(entry) for entry in column]
 		self.cursor.execute('DELETE FROM `%s`' % self.requested_name)
-		self.cursor.commit()
+		self.connection.commit()
 		return result
 	def fetchMany(self,keys):
 		pickled = [pickle.dumps(key) for key in keys]
