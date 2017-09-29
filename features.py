@@ -2,12 +2,10 @@ import c_syntax_tree as st
 import syntax_tree
 import stanford_parser
 from werkzeug import cached_property
-#import pickle
 from collections import Counter
 import pos
 import regression
 import config
-import concurrent.futures
 import easyparallel
 import heapq
 import diskdict
@@ -104,7 +102,7 @@ class documentFunction:
 		self.cachedValues.update(dictionary)
 	def moveToMemory(self,documents):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
-			self.cachedValues.moveToMemory([document.identifier for document in documents])
+			self.cachedValues.moveToMemory([document.identifier for document in documents if document.identifier in self.cachedValues])
 	def removeFromMemory(self,document):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
 			self.cachedValues.removeFromMemory(document.identifier)

@@ -3,6 +3,7 @@ if config.debug_memory:
 	import tracemalloc
 	tracemalloc.start(1024)
 	import objgraph
+	import sys
 import imdb62
 import features
 import random
@@ -12,10 +13,9 @@ import regression
 from collections import Counter
 from functools import reduce
 import heapq
-import concurrent.futures
 import easyparallel
 import diskdict
-#from memory_profiler import profile
+from memory_profiler import profile
 def showMemoryStatistics():
 	for stat in tracemalloc.take_snapshot().statistics('traceback')[:5]:
 		print(stat)
@@ -25,6 +25,11 @@ def showMemoryStatistics():
 				continue
 			print(line)
 			prevLine = line
+	tracked = [(x,sys.getsizeof(x)) for x in gc.get_objects()]
+	most_expensive = heapq.nlargest(10,tracked,lambda t: t[1])
+	print("most expensive: ")
+	for t in most_expensive:
+		print("type: %s, size: %d, repr[:1024]: %s" % (type(t[0]),t[1],repr(t[0])[:1024]))
 def getSuccessRate(testBase,classifier):
 	return len([None for (pred,doc) in zip(classifier.predict(testBase.documents),testBase.documents) if pred == doc.author])
 def getAccumulatedPrediction(testBase,*classifiers):
@@ -77,10 +82,12 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	extra_false3=0
 	parallelGroup = easyparallel.ParallelismGroup(3)
 	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
+	@profile
 	def prepareDocuments(docs):
+		chunksize=2000
 		if functionCollection is not None:
-			for i in range(0,len(docs),5000):
-				chunk = docs[i:i+5000]
+			for i in range(0,len(docs),chunksize):
+				chunk = docs[i:i+chunksize]
 				#print("move %d documents to memory..." % len(chunk))
 				#for doc in docs:
 				#	functionCollection.moveToMemory(doc)
@@ -89,18 +96,28 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 				for func in neededDocumentFunctions:
 					functionCollection.getValues(chunk,func)
 				#print("forget unnecessary document functions...")
+				stanford_trees = functionCollection.getValues(chunk,features.stanfordTreeDocumentFunction)
+				for trees in stanford_trees:
+					for tree in trees:
+						'''
+						objgraph.show_backrefs(tree)
+						raise Exception("This is what you wanted to see, right?")
+						'''
+						tree.recursiveFree()
+				del stanford_trees
 				for doc in chunk:
 					functionCollection.forgetDocument(doc,[features.stanfordTreeDocumentFunction])
 				#print("prepared %d documents." % len(chunk))
 				gc.collect()
 				if config.debug_memory:
 					print("garbage: ",len(gc.garbage))
-					print("50 most common types:")
-					objgraph.show_most_common_types(limit=50)
+					print("15 most common types:")
+					objgraph.show_most_common_types(limit=15)
 					c_syntax_tree.showCMemoryStatistics()
 					showMemoryStatistics()
 					functionCollection.showMemoryStatistics()
 					functionCollection.getFunction(features.stanfordTreeDocumentFunction).cachedValues.showMemoryStatistics()
+					print("leaking: ",len(objgraph.get_leaking_objects()))
 	prepareDocuments(trainingBase.documents)
 	prepareDocuments(testBase.documents)
 	for iteration in range(num_iterations):
@@ -261,7 +278,7 @@ def mainfunc():
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 #@profile
 def runfunc():
-	with diskdict.DiskDict('stanford-trees') as dd:
+	with diskdict.DiskDict('stanford-trees.db') as dd:
 		imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(dd)
 		mainfunc()
 	imdb62.functionCollection.free()

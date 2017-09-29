@@ -2,11 +2,8 @@ from ctypes import CDLL, byref, c_bool, c_char, c_wchar, c_byte, c_ubyte, c_shor
 import os
 import re
 import pos
-import multiprocessing
-import threading
 import time
 from functools import reduce
-import traceback
 libsyntax_tree = CDLL(os.path.dirname(os.path.abspath(__file__))+"/libsyntax_tree.so")
 regex=re.compile("(.*\W)(\w+)\s*\((.*)\);\s")
 ctypes_translation = {
@@ -59,6 +56,8 @@ with open("syntax_tree_function_signatures","r",encoding="utf8") as f:
 			fptr=getattr(libsyntax_tree,name)
 			fptr.restype=restype
 			fptr.argtypes=args
+libsyntax_tree.st_storeTree.argtypes = [c_void_p,c_void_p]
+libsyntax_tree.st_readTree.argtypes = [c_void_p]
 class syntax_tree:
 	def __init__(self, label, children, data=None):	
 		#self.label = label
@@ -68,7 +67,7 @@ class syntax_tree:
 		for i,ch in enumerate(children):
 			libsyntax_tree.st_setTreeChild(self.handle, i, ch.handle)
 			ch.handle = None
-		self.extendable = False
+		#self.extendable = False
 	def free(self):
 		#NB: After calling this function, NO OTHER MEMBER FUNCTION may be called.
 		if libsyntax_tree is not None and self.handle is not None:
@@ -87,16 +86,19 @@ class syntax_tree:
 		return libsyntax_tree.st_canMatchPattern(pattern.handle, self.handle)
 	def countNodes(self):
 		return libsyntax_tree.st_countNodes(self.handle)
-	'''def nicePrint(self,indent=''):
-		line=indent
-		if self.extendable:
-			line += '...'
-		line += '('+pos.pos_tags[self.label]+')'
-		print(line)
-		for ch in self.children:
-			ch.nicePrint(indent+'  ')
-	def __hash__(self):
-		return hash ((self.label,self.data,tuple(ch.__hash__() for ch in self.children)))'''
+
+	def __getstate__(self):
+		array_size = libsyntax_tree.st_getSizeForTreeStorage(self.handle)
+		#print("array size: ",array_size)
+		array_type = c_byte * array_size
+		array      = array_type(0)
+		#print("array, initially: ",array)
+		#print("handle: ",tree.handle)
+		libsyntax_tree.st_storeTree(self.handle, array)
+		#print("array, now: ",array)
+		return bytes(array)
+	def __setstate__(self,bts):
+		self.handle = libsyntax_tree.st_readTree(bts)
 def copySyntaxTreeFromHandle(handle):
 	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
 		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])
@@ -126,6 +128,10 @@ class document:
 		return libsyntax_tree.st_occuringTrees(pattern.handle,self.handle)
 	def frequency(self,pattern):
 		return libsyntax_tree.st_frequency(pattern.handle,self.handle)
+	def __getstate__(self):
+		return self.trees
+	def __setstate__(self,trees):
+		self.init(trees)
 class documentclass:
 	def __init__(self, documents,label=None):
 		self.documents=documents
@@ -140,16 +146,6 @@ class documentclass:
 			self.handle=None
 	def __del__(self):
 		self.free()
-class miningThread(threading.Thread):
-	def __init__(self,split,index,iterations):
-		self.split=split
-		self.index=index
-		self.iterations=iterations
-		threading.Thread.__init__(self)
-	def run(self):
-		self.result = libsyntax_tree.st_doMiningIterationsInSplitState(self.split,self.index,self.iterations)
-def _doMiningIterationsInSplitState(kwds):
-	return libsyntax_tree.st_doMiningIterationsInSplitState(*kwds)
 class documentbase:
 	def __init__(self, classes):
 		self.classes=classes
@@ -204,17 +200,25 @@ class documentbase:
 		return result
 def showCMemoryStatistics():
 	libsyntax_tree.showMemoryInformation()
+libsyntax_tree.st_testFillArray.argtypes=[c_uint, c_void_p]
+libsyntax_tree.st_testPrintArray.argtypes=[c_uint, c_void_p]
+def cArrayTest():
+	array_size=1024**3
+	ct = c_byte * array_size
+	myarray = ct(0)
+	libsyntax_tree.st_testFillArray(array_size,myarray)
+	print("value at position 42: ",myarray[42])
+	libsyntax_tree.st_testPrintArray(array_size,myarray)
+	libsyntax_tree.st_testPrintArray(2,b'11')
+	print("values: ",bytes(myarray)[:42])
+	del myarray
 if __name__ == "__main__":
-	testpattern = syntax_tree(42, [syntax_tree(42, [])])
-	testpattern.print()
-	testpattern.nicePrint()
-	singledoc = lambda x: document([syntax_tree(x,[])])
-	extradoc1 = document([syntax_tree(42, [syntax_tree(1, [])])])
-	extradoc2 = document([syntax_tree(42, [syntax_tree(2, [])])])
-	base = documentbase([documentclass([singledoc(1), singledoc(2), extradoc1]),documentclass([singledoc(3), extradoc2, singledoc(42)])])
-	print(base.conditionalEntropy(testpattern,10))
-	result=base.mineDiscriminativePatterns(43,0,10,2)
-	print("got %d discriminative patterns." % len(result))
-	for tree in result:
-		print(tree)
-		tree.print()
+	cArrayTest()
+	tree = syntax_tree(42,[syntax_tree(1,[]),syntax_tree(2,[syntax_tree(3,[])])])
+	print("tree:")
+	tree.print()
+	bts = tree.__getstate__()
+	print("bytes: ",bts)
+	tree.__setstate__(bts)
+	print("tree, again:")
+	tree.print()

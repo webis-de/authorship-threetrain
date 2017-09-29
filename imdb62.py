@@ -190,16 +190,23 @@ def doMiningTest(base):
 	print("%d trees exist." % st.num_trees)
 
 if __name__ == '__main__':
-	loader = asynchronousLoader()
-	fun =functionCollection.getFunction(features.stanfordTreeDocumentFunction)
-	indices=None
-	if len(sys.argv) > 1:
-		i = int(sys.argv[1])
-		if 0 <= i and i < 7:
-			indices = list(range(i*10000,(i+1)*10000))
-	with diskdict.DiskDict('stanford-trees') as dd:
-		fun.setCacheDict(dd)
-		print("keys available: ",list(fun.cachedValues.keys())[:10])
-		print(-4137911097833308936 in fun.cachedValues)
-		readCache(indices=indices)
-		print(-4137911097833308936 in fun.cachedValues)
+	with diskdict.DiskDict('stanford-trees.db') as stanford_dict, diskdict.DiskDict('tokens.db') as tokens_dict, \
+		diskdict.DiskDict('pos.db') as pos_dict, diskdict.DiskDict('c_syntax_tree.db') as st_dict:
+		functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(stanford_dict)
+		functionCollection.getFunction(features.tokensDocumentFunction).setCacheDict(tokens_dict)
+		functionCollection.getFunction(features.posDocumentFunction).setCacheDict(pos_dict)
+		functionCollection.getFunction(features.stDocumentDocumentFunction).setCacheDict(st_dict)
+		#readCache()
+		print("stanford trees loaded.")
+		chunksize = 2000
+		for i in range(0,len(documentbase.documents),chunksize):
+			print("i: ",i)
+			docs = documentbase.documents[i:i+chunksize]
+			functionCollection.moveToMemory(docs)
+			print("moved to memory")
+			functionCollection.getValues(docs,features.tokensDocumentFunction)
+			functionCollection.getValues(docs,features.posDocumentFunction)
+			functionCollection.getValues(docs,features.stDocumentDocumentFunction)
+			print("computed")
+			for doc in docs:
+				functionCollection.forgetDocument(doc)

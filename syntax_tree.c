@@ -1486,6 +1486,60 @@ void st_miningStateStatistics(const st_miningState* state, unsigned int* pattern
 		}
 	}
 }
+void st_testFillArray(unsigned int length, char* array) {
+	while (length-- > 0) {
+		*(array++)=1;
+	}
+}
+void st_testPrintArray(unsigned int length, char* array) {
+	unsigned int i;
+	printf("array: ");
+	for (i=0; i<length; i++) {
+		if (i>0) {
+			printf(", ");
+		}
+		printf("%d",array[i]);
+		if (i>1000) break;
+	}
+	printf("\n");
+}
+typedef struct {
+	st_label label;
+	unsigned short int num_children;
+	short int flags;
+} st_stored_tree;
+unsigned int st_getSizeForTreeStorage(const st_tree* tree) {
+	return sizeof(st_stored_tree) * st_countNodes(tree);
+}
+void _st_storeTree(const st_tree* tree, st_stored_tree** memory) {
+	st_stored_tree* ptr = *memory;
+	ptr->label = tree->label;
+	ptr->num_children = tree->num_children;
+	ptr->flags = tree->flags & TREEFLAG_EXTENDABLE_EDGE;
+	(*memory)++;
+	unsigned int i;
+	for (i=0; i< tree->num_children;i++) {
+		_st_storeTree(tree->children[i], memory);
+	}
+}
+void st_storeTree(const st_tree* tree, st_stored_tree* memory) {
+	printf("st_storeTree(%p,%p);\n", tree, memory);
+	_st_storeTree(tree,&memory);
+}
+st_tree* _st_readTree(st_stored_tree** memory) {
+	st_stored_tree* ptr = *memory;
+	st_tree* tree = st_prepareTree(ptr->label, ptr->num_children);
+	tree->flags |= ptr->flags;
+	(*memory)++;
+	unsigned int i;
+	for (i=0; i< tree->num_children;i++) {
+		st_setTreeChild(tree,i,_st_readTree(memory));
+	}
+	return tree;
+}
+st_tree* st_readTree(st_stored_tree* memory) {
+	return _st_readTree(&memory);
+}
 int main(int argc, char* argv[]) {
 	st_tree* tree1 = st_prepareTree(0, 0);
 	st_tree* tree2 = st_prepareTree(1, 0);
