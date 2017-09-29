@@ -131,7 +131,7 @@ class document:
 	def __getstate__(self):
 		return self.trees
 	def __setstate__(self,trees):
-		self.init(trees)
+		self.__init__(trees)
 class documentclass:
 	def __init__(self, documents,label=None):
 		self.documents=documents
