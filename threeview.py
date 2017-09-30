@@ -88,26 +88,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		if functionCollection is not None:
 			for i in range(0,len(docs),chunksize):
 				chunk = docs[i:i+chunksize]
-				#print("move %d documents to memory..." % len(chunk))
-				#for doc in docs:
-				#	functionCollection.moveToMemory(doc)
-				functionCollection.moveToMemory(chunk)
-				#print("compute needed document functions...")
-				for func in neededDocumentFunctions:
-					functionCollection.getValues(chunk,func)
+				functionCollection.moveToMemory(chunk,neededDocumentFunctions)
 				#print("forget unnecessary document functions...")
-				stanford_trees = functionCollection.getValues(chunk,features.stanfordTreeDocumentFunction)
-				for trees in stanford_trees:
-					for tree in trees:
-						'''
-						objgraph.show_backrefs(tree)
-						raise Exception("This is what you wanted to see, right?")
-						'''
-						tree.recursiveFree()
-				del stanford_trees
-				for doc in chunk:
-					functionCollection.forgetDocument(doc,[features.stanfordTreeDocumentFunction])
-				#print("prepared %d documents." % len(chunk))
 				gc.collect()
 				if config.debug_memory:
 					print("garbage: ",len(gc.garbage))
@@ -278,8 +260,12 @@ def mainfunc():
 	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
 #@profile
 def runfunc():
-	with diskdict.DiskDict('stanford-trees.db') as dd:
-		imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(dd)
+	with diskdict.DiskDict('stanford-trees.db') as stanford_dict, diskdict.DiskDict('tokens.db') as tokens_dict, \
+		diskdict.DiskDict('pos.db') as pos_dict, diskdict.DiskDict('c_syntax_tree.db') as st_dict:
+		imdb62.functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(stanford_dict)
+		imdb62.functionCollection.getFunction(features.tokensDocumentFunction).setCacheDict(tokens_dict)
+		imdb62.functionCollection.getFunction(features.posDocumentFunction).setCacheDict(pos_dict)
+		imdb62.functionCollection.getFunction(features.stDocumentDocumentFunction).setCacheDict(st_dict)
 		mainfunc()
 	imdb62.functionCollection.free()
 	del imdb62.functionCollection,imdb62.documentbase

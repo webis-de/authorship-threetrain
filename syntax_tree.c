@@ -1523,7 +1523,6 @@ void _st_storeTree(const st_tree* tree, st_stored_tree** memory) {
 	}
 }
 void st_storeTree(const st_tree* tree, st_stored_tree* memory) {
-	printf("st_storeTree(%p,%p);\n", tree, memory);
 	_st_storeTree(tree,&memory);
 }
 st_tree* _st_readTree(st_stored_tree** memory) {

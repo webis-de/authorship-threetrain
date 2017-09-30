@@ -102,6 +102,7 @@ class documentFunction:
 		self.cachedValues.update(dictionary)
 	def moveToMemory(self,documents):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
+			#print("move to memory. Cached: ",len(self.cachedValues),": ",repr(list(self.cachedValues.keys())[:20]))
 			self.cachedValues.moveToMemory([document.identifier for document in documents if document.identifier in self.cachedValues])
 	def removeFromMemory(self,document):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
@@ -165,9 +166,12 @@ class documentFunctionCollection:
 					self.instances[key].forgetDocument(document)
 				else:
 					print("Asked to forget document ",document.identifier," for class ",functionClass,", but have no instance for this.")
-	def moveToMemory(self,docs):
-		for func in self.instances.values():
-			func.moveToMemory(docs)
+	def moveToMemory(self,docs,functionClasses=None):
+		#print("move to memory with these instances: ",self.instances.keys())
+		#print("functionClasses: ",functionClasses)
+		for cls,func in self.instances.items():
+			if functionClasses is None or cls[0] in functionClasses:
+				func.moveToMemory(docs)
 	def showMemoryStatistics(self):
 		for key,value in self.instances.items():
 			print("key: ",key)
