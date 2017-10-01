@@ -110,6 +110,9 @@ class documentFunction:
 		if isinstance(self.cachedValues,diskdict.DiskDict):
 			#print("move to memory. Cached: ",len(self.cachedValues),": ",repr(list(self.cachedValues.keys())[:20]))
 			self.cachedValues.moveToMemory([document.identifier for document in documents if document.identifier in self.cachedValues])
+			unmovable = sum(1 for document in documents if document.identifier not in self.cachedValues)
+			if unmovable > 0:
+				raise Exception("Cannot move %d documents to memory" % unmovable)
 	def removeFromMemory(self,document):
 		if isinstance(self.cachedValues,diskdict.DiskDict):
 			self.cachedValues.removeFromMemory(document.identifier)
@@ -477,7 +480,8 @@ class syntacticView(view):
 		base = docbase.stDocumentbase
 		if self.treeFeature is None and self.minedTreesCacheFile is not None and os.path.exists(self.minedTreesCacheFile):
 			with open(self.minedTreesCacheFile,'rb') as f:
-				self.treeFeature = pickle.load(f)
+				self.treeFeature = self.getFunction(syntaxTreeFrequencyFeature, pickle.load(f))
+
 				self.remine_trees_until = 0
 		if self.remine_trees_until is 0:
 			treeFeature = self.treeFeature
@@ -491,7 +495,7 @@ class syntacticView(view):
 					self.treeFeature = treeFeature
 			if self.minedTreesCacheFile is not None:
 				with open(self.minedTreesCacheFile,'wb') as f:
-					pickle.dump(treeFeature,f)
+					pickle.dump(treeFeature.trees,f)
 		features.append(treeFeature)
 		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 		#return treeFeature
