@@ -18,6 +18,7 @@ class multiclassLogitAbstract:
 		probs = self.getProbabilities(vectors)
 		return [countermax(p) for p in probs]
 class multiclassLogitSklearn(multiclassLogitAbstract):
+	__slots__ = ['occuring_labels','factors','model']
 	def __init__(self,labels,features):
 		#print(features[0])
 		self.occuring_labels = sorted(set(labels))
@@ -33,6 +34,7 @@ class multiclassLogitSklearn(multiclassLogitAbstract):
 		vectors = [[ v*factor for (v,factor) in zip(vector,self.factors) ] for vector in vectors]
 		return [Counter({label: prob for (label,prob) in zip(self.occuring_labels,probs)}) for probs in self.model.predict_proba(vectors)]
 class multiclassLogitLiblinear:
+	__slots__ = ['labels','int_labels','factors','models']
 	def __init__(self, labels, features):
 		self.labels = list(set(labels))
 		self.int_labels = [self.labels.index(l) for l in labels]

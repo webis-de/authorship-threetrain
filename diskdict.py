@@ -6,6 +6,7 @@ import pickle
 import itertools
 hashfunc = zlib.adler32
 class DiskDict(MutableMapping):
+	__slos__ = ['connection','cursor','tablename','requested_name','_keys','memory_cache']
 	def __init__(self,filename,tablename='records'):
 			# use no untrusted value for `tablename`
 		self.connection = sqlite3.connect(filename)

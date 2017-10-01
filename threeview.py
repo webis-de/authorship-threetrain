@@ -4,6 +4,10 @@ if config.debug_memory:
 	tracemalloc.start(1024)
 	import objgraph
 	import sys
+	from memory_profiler import profile
+else:
+	def profile(x):
+		return x
 import imdb62
 import features
 import random
@@ -15,7 +19,6 @@ from functools import reduce
 import heapq
 import easyparallel
 import diskdict
-from memory_profiler import profile
 def showMemoryStatistics():
 	for stat in tracemalloc.take_snapshot().statistics('traceback')[:5]:
 		print(stat)
@@ -84,6 +87,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
 	@profile
 	def prepareDocuments(docs):
+		print("preparing %d documents" % len(docs))
 		chunksize=2000
 		if functionCollection is not None:
 			for i in range(0,len(docs),chunksize):
@@ -251,7 +255,7 @@ def mainfunc():
 	view2 = features.lexicalView()
 	view2.functionCollection = imdb62.functionCollection
 	view3 = features.syntacticView([1,2,3], config.min_support, config.num_bins, config.max_embeddable_edges,\
-										remine_trees_until = config.remine_trees_until)
+								remine_trees_until = config.remine_trees_until,minedTreesCacheFile='mined-trees')
 	view3.functionCollection = imdb62.functionCollection
 	trueLabels=getTrueLabels(testBase.documents)
 	with open("results.txt","at") as f:

@@ -5,6 +5,7 @@ import sys
 from werkzeug import cached_property
 import pickle
 class stanfordTree:
+	__slots__ = ['label','data','parent','rangeStart','rangeEnd','children']
 	def __init__(self, label, parent=None, position=None):
 		self.label=label
 		self.data=None
@@ -34,15 +35,15 @@ class stanfordTree:
 		stream.write(self.label+"\n"+(self.data or '')+"\n"+str(len(self.children))+"\n")
 		for ch in self.children:
 			ch.writeStream(stream)
-	@cached_property
+	@property
 	def leaves(self):
 		if len(self.children) == 0:
 			return [self]
 		else:
-			res=[]
+			result=[]
 			for ch in self.children:
-				res += ch.leaves
-			return res
+				result += ch.leaves
+			return result
 	def recursiveFree(self):
 		#after calling this function, no other member function of this tree or any its descendants may be called
 		if not hasattr(self,'parent'):

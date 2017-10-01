@@ -12,6 +12,7 @@ import threading
 import multiprocessing
 import os
 class ParallelismGroup:
+	__slots__ = ['num_kernels','pool','lock','threads']
 	def __init__(self,num_kernels):
 		#creates at most `num_kernels` subprocesses
 		self.num_kernels = num_kernels
@@ -37,6 +38,7 @@ class ParallelismGroup:
 		self.threads = []
 		return result
 class OuterThread(threading.Thread):
+	__slots__ = ['fun','args','kwargs','lock','pool','local','result','excepted','exception']
 	def __init__(self,fun,args,kwargs,lock,pool):
 		self.fun = fun
 		self.args = args

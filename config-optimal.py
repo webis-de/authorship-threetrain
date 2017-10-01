@@ -18,7 +18,7 @@ configuration = {
 			  # not mentioned in the paper, but seems useful
 'undersample': True, # use an undersampling approach to skewed training databases. Not described in the paper, but
 		   # apparently highly useful when using liblinear
-'remine_trees_until': 1, # number of times the syntactic tree patterns are re-mined. Normally, when the classifiers
+'remine_trees_until': 2, # number of times the syntactic tree patterns are re-mined. Normally, when the classifiers
 			 # are trained, completely new trees are mined. This gets expensive (in terms of time and space)
 			 # when a lot of documents are available. Therefore, only the first times, new trees are mined
 			 # and afterwards, the old trees are re-used. Set to 0 to always re-mine trees. Set to 1 to mine trees exactly once.
@@ -48,7 +48,7 @@ configuration = {
 'featurelimit_max_word_unigrams': None, #similar. Defauls to None
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
-'debug_memory': True # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
+'debug_memory': False # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
 }
 glob = globals()
 for (key,value) in configuration.items():

@@ -11,6 +11,7 @@ import heapq
 import diskdict
 import hashlib
 import pickle
+import os.path
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -36,13 +37,18 @@ def normalizedCounter(*kwds):
 	return Counter({key: value*factor for (key,value) in ctr.items()})
 document_identifier_hashfun = hashlib.sha256
 class document:
+	__slots__=['text','author','identifier']
 	def __init__(self, text, author=None):
 		self.text = text
 		self.author=author
+		self.identifier = document_identifier_hashfun(text.encode('utf-8')).digest()
+		'''
 	@cached_property
 	def identifier(self):
 		return document_identifier_hashfun(self.text.encode('utf-8')).digest()
+		'''
 class documentFunction:
+	__slots__=['cachedValues','functionCollection']
 	def __init__(self):
 		#print("created document function",type(self),hasattr(self,'functionCollection'))
 		if not hasattr(self,'functionCollection'):
@@ -115,6 +121,7 @@ class documentFunction:
 				del self.cachedValues[document.identifier]
 class derivedDocumentFunction(documentFunction):
 	#does not only look at the text but also at the outcome of another document function
+	__slots__=['predecessorFunction']
 	def __init__(self,predecessorFunctionClass,*kwds):
 		if not hasattr(self,'functionCollection'):
 			self.predecessorFunction = predecessorFunctionClass(*kwds)
@@ -131,6 +138,7 @@ class derivedDocumentFunction(documentFunction):
 		return self.deriveValue(document,self.predecessorFunction.getValue(document))
 class documentFunctionCollection:
 	#a set of document functions that may be derived from each other
+	__slots__=['instances']
 	def __init__(self):
 		self.instances={}
 		print("CREATED documentFunctionCollection",type(self))
@@ -186,10 +194,12 @@ class documentFunctionCollection:
 				print("value.cachedValues: ",value.cachedValues)
 				raise Exception("Unexpected type for cachedValues.")
 class feature(documentFunction):
+	__slots__=[]
 	def vectorLength(self):
 		pass
 class combinedFeature(feature):
 	#given features ft1, ..., ftn; this one maps a document d to (ft1(d), ..., ftn(d))
+	__slots__=['subfeatures']
 	def __init__(self, subfeatures,functionCollection=None):
 		self.subfeatures = subfeatures
 		if functionCollection is not None:
@@ -210,6 +220,7 @@ class combinedFeature(feature):
 				r += v
 		return result
 class derivedFeature(feature,derivedDocumentFunction):
+	__slots__=[]
 	pass
 class documentbase:
 	def __init__(self, documents):
@@ -249,6 +260,7 @@ class documentbase:
 			result.functionCollection = self.functionCollection
 		return result
 class view:
+	__slots__=['functionCollection']
 	def getFeature(self,docbase):
 		pass
 	def getFunction(self,functionClass,*kwds):
@@ -265,10 +277,12 @@ class view:
 
 # now to the concrete stuff
 class stanfordTreeDocumentFunction(documentFunction):
+	__slots__=[]
 	# to each document, return a list of stanford trees, encoding the tokenization, pos-tagging and syntactic structure
 	def mappingv(self,documents):
 		return easyparallel.callWorkerFunction(stanford_parser.parseText,[d.text for d in documents])
 class tokensDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	#for each document, returns a list of tokens
 	def __init__(self):
 		super().__init__(stanfordTreeDocumentFunction)
@@ -278,12 +292,14 @@ class tokensDocumentFunction(derivedDocumentFunction):
 			result += [l.data for l in tree.leaves]
 		return result
 class tokensCounterDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	#normalized
 	def __init__(self):
 		super().__init__(tokensDocumentFunction)
 	def deriveValue(self,document,tokens):
 		return normalizedCounter(tokens)
 class numTokensDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	def __init__(self):
 		super().__init__(tokensDocumentFunction)
 	def deriveValue(self,document,tokens):
@@ -301,6 +317,7 @@ class characterNGramDocumentFunction(derivedDocumentFunction):
 		return result
 '''
 class characterNGramDocumentFunction(documentFunction):
+	__slots__=['n']
 	def __init__(self,n):
 		self.n=n
 		super().__init__()
@@ -308,14 +325,17 @@ class characterNGramDocumentFunction(documentFunction):
 		t=document.text
 		return [t[i:i+self.n] for i in range(len(t)-self.n)]
 class characterNGramCounterDocumentFunction(derivedDocumentFunction):
+	__slots__=['n']
 	def __init__(self,n):
 		super().__init__(characterNGramDocumentFunction,n)
 	def deriveValue(self,document,tokens):
 		return normalizedCounter(tokens)
 class numCharactersDocumentFunction(documentFunction):
+	__slots__=[]
 	def mapping(self,document):
 		return len(document.text)
 class posDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	#for each document, returns a list of pos tokens
 	def __init__(self):
 		super().__init__(stanfordTreeDocumentFunction)
@@ -325,28 +345,33 @@ class posDocumentFunction(derivedDocumentFunction):
 			result += [l.label for l in tree.leaves]
 		return result
 class posCounterDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	def __init__(self):
 		super().__init__(posDocumentFunction)
 	def deriveValue(self,document,pos):
 		return normalizedCounter(pos)
 class posNGramDocumentFunction(derivedDocumentFunction):
+	__slots__=['n']
 	def __init__(self,n):
 		self.n=n
 		super().__init__(posDocumentFunction)
 	def deriveValue(self,document,pos):
 		return [tuple(pos[i:i+self.n]) for i in range(len(pos)-self.n+1)]
 class posNGramCounterDocumentFunction(derivedDocumentFunction):
+	__slots__=['n']
 	def __init__(self,n):
 		self.n=n
 		super().__init__(posNGramDocumentFunction,n)
 	def deriveValue(self,document,pos):
 		return normalizedCounter(pos)
 class stDocumentDocumentFunction(derivedDocumentFunction):
+	__slots__=[]
 	def __init__(self):
 		super().__init__(stanfordTreeDocumentFunction)
 	def deriveValue(self,document,trees):
 		return st.document([syntax_tree.stanfordTreeToStTree(tree) for tree in trees])
 class wordUnigramFeature(derivedFeature):
+	__slots__=['words']
 	def __init__(self,words):
 		self.words = words
 		derivedDocumentFunction.__init__(self,tokensCounterDocumentFunction)
@@ -355,6 +380,7 @@ class wordUnigramFeature(derivedFeature):
 	def deriveValue(self,document,tokensCounter):
 		return [tokensCounter[tok] for tok in self.words]
 class characterNGramFeature(derivedFeature):
+	__slots__=['n','ngrams']
 	def __init__(self,n,ngrams):
 		self.n = n
 		self.ngrams = ngrams
@@ -364,6 +390,7 @@ class characterNGramFeature(derivedFeature):
 	def deriveValue(self,document,ngramsCounter):
 		return [ngramsCounter[ngram] for ngram in self.ngrams]
 class posNGramFeature(derivedFeature):
+	__slots__=['n','ngrams']
 	def __init__(self,n,ngrams):
 		self.n = n
 		self.ngrams = ngrams
@@ -373,6 +400,7 @@ class posNGramFeature(derivedFeature):
 	def deriveValue(self,document,ngramsCounter):
 		return [ngramsCounter[ngram] for ngram in self.ngrams]
 class syntaxTreeFrequencyFeature(derivedFeature):
+	__slots__=['trees']
 	def __init__(self,trees):
 		self.trees=trees
 		derivedDocumentFunction.__init__(self,stDocumentDocumentFunction)
@@ -381,6 +409,7 @@ class syntaxTreeFrequencyFeature(derivedFeature):
 	def deriveValue(self,_,document):
 		return [document.frequency(tree) for tree in self.trees]
 class characterView(view):
+	__slots__=['ns']
 	def __init__(self,ns):
 		self.ns = ns
 	def getFeature(self, docbase):
@@ -401,6 +430,7 @@ class characterView(view):
 				features.append(self.getFunction(characterNGramFeature,n,tuple(selection)))
 		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 class lexicalView(view):
+	__slots__=[]
 	def getFeature(self, docbase):
 		function = self.getFunction(tokensCounterDocumentFunction)
 		limit = config.featurelimit_max_word_unigrams
@@ -416,12 +446,18 @@ class lexicalView(view):
 			selection = heapq.nlargest(limit,values,lambda unigram: values[unigram])
 			return self.getFunction(wordUnigramFeature,tuple(selection))
 class syntacticView(view):
-	def __init__(self, ns, supportLowerBound, n, k, remine_trees_until=0):
+	__slots__=['ns','supportLowerBound','n','k','remine_trees_until','minedTreesCacheFile','treeFeature']
+	def __init__(self, ns, supportLowerBound, n, k, remine_trees_until=0, minedTreesCacheFile = None):
+#if minedTreesCacheFile exists, read the trees from minedTreesCacheFile. Otherwise:
+#if remine_trees_until == 0, remine trees everytime. Otherwise, remine `remine_trees_until` times.
+#After each mining, the result gets saved to `minedTreesCacheFile`.
 		self.ns = ns
 		self.supportLowerBound = supportLowerBound
 		self.n = n
 		self.k = k
 		self.remine_trees_until = None if remine_trees_until == 0 else remine_trees_until
+		self.minedTreesCacheFile = minedTreesCacheFile
+		self.treeFeature = None
 	def getFeature(self,docbase):
 		features=[]
 		for n in self.ns:
@@ -439,6 +475,10 @@ class syntacticView(view):
 				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
 				features.append(self.getFunction(posNGramFeature,n,tuple(selection)))
 		base = docbase.stDocumentbase
+		if self.treeFeature is None and self.minedTreesCacheFile is not None and os.path.exists(self.minedTreesCacheFile):
+			with open(self.minedTreesCacheFile,'rb') as f:
+				self.treeFeature = pickle.load(f)
+				self.remine_trees_until = 0
 		if self.remine_trees_until is 0:
 			treeFeature = self.treeFeature
 		else:
@@ -449,19 +489,22 @@ class syntacticView(view):
 				self.remine_trees_until -= 1
 				if self.remine_trees_until == 0:
 					self.treeFeature = treeFeature
+			if self.minedTreesCacheFile is not None:
+				with open(self.minedTreesCacheFile,'wb') as f:
+					pickle.dump(treeFeature,f)
 		features.append(treeFeature)
 		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
-		#return keeFeature
+		#return treeFeature
 class documentClassifier(documentFunction):
+	__slots__=['feature','regression']
 	def __init__(self,trainingDocbase,feature):
-		self.docbase = trainingDocbase
+		docbase = trainingDocbase
 		self.feature = feature
-		self.authors = [doc.author for doc in trainingDocbase.documents]
-		self.vectors = self.feature.getValuev(trainingDocbase.documents)
-		print("start classifying with %d vectors and %d features" % (len(self.vectors),feature.vectorLength()))
-		self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,self.authors, self.vectors)
-		print("returned from classifying with %d vectors and %d features" % (len(self.vectors),feature.vectorLength()))
-		self.cachedProbabilities = {}
+		authors = [doc.author for doc in trainingDocbase.documents]
+		vectors = feature.getValuev(trainingDocbase.documents)
+		print("start classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
+		self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,authors,vectors)
+		print("returned from classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		if hasattr(feature,'functionCollection'):
 			self.functionCollection = feature.functionCollection
 		super().__init__()

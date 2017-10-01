@@ -59,6 +59,7 @@ with open("syntax_tree_function_signatures","r",encoding="utf8") as f:
 libsyntax_tree.st_storeTree.argtypes = [c_void_p,c_void_p]
 libsyntax_tree.st_readTree.argtypes = [c_void_p]
 class syntax_tree:
+	__slots__ = ['handle']
 	def __init__(self, label, children, data=None):	
 		#self.label = label
 		#self.children = children
@@ -99,10 +100,16 @@ class syntax_tree:
 		return bytes(array)
 	def __setstate__(self,bts):
 		self.handle = libsyntax_tree.st_readTree(bts)
+'''
 def copySyntaxTreeFromHandle(handle):
 	result=syntax_tree(libsyntax_tree.st_treeGetLabel(handle), [copySyntaxTreeFromHandle(libsyntax_tree.st_treeGetChild(handle, index)) for\
 		index in range(libsyntax_tree.st_treeNumOfChildren(handle))])
 	result.setExtendable(libsyntax_tree.st_treeGetExtendable(handle))
+	return result
+'''
+def copySyntaxTreeFromHandle(handle):
+	result = syntax_tree.__new__(syntax_tree)
+	result.handle = libsyntax_tree.st_deepCopyTree(handle)
 	return result
 def copyPatternListFromHandle(handle):
 	result = [None]*libsyntax_tree.st_listGetLength(handle)
@@ -112,6 +119,7 @@ def copyPatternListFromHandle(handle):
 		entry = libsyntax_tree.st_listedGetNext(entry)
 	return result
 class document:
+	__slots__ = ['trees','handle']
 	def __init__(self, trees):
 		self.trees=trees
 		self.handle = libsyntax_tree.st_prepareDocument(len(trees))
@@ -133,6 +141,7 @@ class document:
 	def __setstate__(self,trees):
 		self.__init__(trees)
 class documentclass:
+	__slots__ = ['documents','label','handle']
 	def __init__(self, documents,label=None):
 		self.documents=documents
 		self.label=label # label is just used internally
@@ -147,6 +156,7 @@ class documentclass:
 	def __del__(self):
 		self.free()
 class documentbase:
+	__slots__ = ['classes','handle']
 	def __init__(self, classes):
 		self.classes=classes
 		self.handle = libsyntax_tree.st_prepareDocumentBase(len(classes))
