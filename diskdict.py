@@ -18,7 +18,6 @@ class DiskDict(MutableMapping):
 		self.cursor.execute('SELECT `py_key` FROM `%s`' % tablename)
 		self._keys = [pickle.loads(row[0]) for row in self.cursor.fetchall()]
 		self.memory_cache = {}
-		print("created DiskDict. memory_cache:",list(self.memory_cache))
 	def __iter__(self):
 		return iter(self._keys)
 	def __len__(self):
@@ -49,7 +48,6 @@ class DiskDict(MutableMapping):
 	def values(self):
 		return self.fetchMany(self._keys)
 	def moveToMemory(self,keys):
-		print("moveToMemory. memory_cache:",list(self.memory_cache))
 		keys = [k for k in keys if k in self._keys]
 		pickled = [pickle.dumps(key) for key in keys]
 		hashes = [hashfunc(p) for p in pickled]
@@ -66,9 +64,7 @@ class DiskDict(MutableMapping):
 		for u,r in zip(useful,results):
 			p,h,m = u
 			m[p] = r
-		print("moved ",hashes," to memory. Now cached: ",list(self.memory_cache))
 	def removeFromMemory(self,key):
-		print("removeFromMemory. memory_cache:",list(self.memory_cache))
 		pickled = pickle.dumps(key)
 		h = hashfunc(pickled)
 		if not h in self.memory_cache:
@@ -79,11 +75,9 @@ class DiskDict(MutableMapping):
 		del mem[pickled]
 		if not mem:
 			del self.memory_cache[h]
-		print("removed from memory. memory_cache:",list(self.memory_cache))
 	def showMemoryStatistics(self):
 		print("DiskDict: Remembered %d values" % (sum(len(v) for v in self.memory_cache.values())))
 	def __getitem__(self,key):
-		print("getitem. memory_cache:",list(self.memory_cache))
 		if not key in self._keys:
 			raise KeyError
 		pickled = pickle.dumps(key)
@@ -92,15 +86,9 @@ class DiskDict(MutableMapping):
 			mem = self.memory_cache[h]
 			if pickled in mem:
 				return mem[pickled]
-			else:
-				print("found hash %d but not key '%s'" % (h,pickled))
-		else:
-			print("hash not found: ",h)
-			print("known hashes: ",list(self.memory_cache))
 		self.cursor.execute('SELECT `py_value` FROM `%s` WHERE `py_hash` == ? AND `py_key` == ?' % self.tablename, (h,pickled))
 		return pickle.loads(self.cursor.fetchone()[0])
 	def __setitem__(self,key,value):
-		print("getitem. memory_cache:",list(self.memory_cache))
 		pickled = pickle.dumps(key)
 		h=hashfunc(pickled)
 		if h in self.memory_cache:
@@ -115,7 +103,6 @@ class DiskDict(MutableMapping):
 				(h,pickled,pickle.dumps(value)))
 			self._keys.append(key)
 	def __delitem__(self,key):
-		print("delitem. memory_cache:",list(self.memory_cache))
 		if not key in self._keys:
 			raise KeyError
 		pickled = pickle.dumps(key)
@@ -145,17 +132,6 @@ class DiskDict(MutableMapping):
 			self.connection=None
 	def __del__(self):
 		self.close()
-	def __getstate__(self):
-		raise Exception("attempted to pickle diskdict")
-		return (self._keys,self.memory_cache)
-	def __setstate__(self,*kwds,**kwargs):
-		raise Exception("attempted to unpickle diskdict")
-		print("set state: ",*kwds,kwargs)
-		self.connection=None
-		self.cursor=None
-		self.tablename=None
-		self.requested_name=None
-		self._keys,self.memory_cache = pickle.loads(stat)
 if __name__ == '__main__':
 	import tracemalloc
 	import random

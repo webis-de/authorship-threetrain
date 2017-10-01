@@ -89,7 +89,6 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	def prepareDocuments(docs):
 		import pickle
 		print("preparing %d documents" % len(docs))
-		print("preparing these documents: ",[diskdict.hashfunc(pickle.dumps(d.identifier)) for d in docs])
 		chunksize=2000
 		if functionCollection is not None:
 			for i in range(0,len(docs),chunksize):
@@ -106,24 +105,14 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					functionCollection.showMemoryStatistics()
 					functionCollection.getFunction(features.stanfordTreeDocumentFunction).cachedValues.showMemoryStatistics()
 					print("leaking: ",len(objgraph.get_leaking_objects()))
-	print("preparing trainingBase")
 	prepareDocuments(trainingBase.documents)
-	print("preparing testBase")
 	prepareDocuments(testBase.documents)
 	for iteration in range(num_iterations):
 		gc.collect()
 		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
-		print("preparing choice")
 		prepareDocuments(choice)
-		print("got choice")
 		cached_keys = [sorted(list(functionCollection.getFunction(f).cachedValues.memory_cache)) for f in neededDocumentFunctions]
-		print("cached: ",cached_keys[0])
-		if cached_keys[0] == cached_keys[1] and cached_keys[1] == cached_keys[2]:
-			print("cached coincide.")
-		else:
-			raise Exception("Caches do not coincide.")
-			print("\n".join(repr(l) for l in cached_keys))
 		'''
 		classifier1 = view1.createClassifier(balanced1)
 		classified1 = classifier1.predict(choice)
@@ -186,8 +175,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					extra_true1+=1
 				else:
 					extra_false1+=1
-			#if discard and functionCollection is not None:
-			#	functionCollection.forgetDocument(doc)
+			if discard and functionCollection is not None:
+				functionCollection.forgetDocument(doc)
 		labelled1 = labelled1.extend(extraLabelled1)
 		labelled2 = labelled2.extend(extraLabelled2)
 		labelled3 = labelled3.extend(extraLabelled3)
