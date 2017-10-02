@@ -130,6 +130,12 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		classifier1,classified1 = parallelGroup_results[0]
 		classifier2,classified2 = parallelGroup_results[1]
 		classifier3,classified3 = parallelGroup_results[2]
+		print("prediction testBase for the records...")
+		parallelGroup.add_branch(classifier1.getValuev,testBase.documents)
+		parallelGroup.add_branch(classifier2.getValuev,testBase.documents)
+		parallelGroup.add_branch(classifier3.getValuev,testBase.documents)
+		parallelGroup.get_results()
+		print("got results for testBase!")
 		resline="%d,%d,%d,%d,%d,%d" % (iteration,len(testBase.documents),getSuccessRate(testBase,classifier1),\
 			getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),\
 			getAccumulatedSuccessRate(testBase,classifier1,classifier2,classifier3))
