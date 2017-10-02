@@ -3,15 +3,15 @@ import numpy
 #this configuration file is aimed to produce the best results
 configuration = {
 'do_fake' : False, # set to true to insert only truely labelled documents
-'use_small_cache':False, # set to true to use a small cache. Restrictions: num_authors <= 3, num_training + num_unlabelled + num_test <= 10
+'use_small_cache':True, # set to true to use a small cache. Restrictions: num_authors <= 3, num_training + num_unlabelled + num_test <= 10
 		# reduces startup time, useful to search errors
-'num_authors': 10, # number of authors to include into training
-'num_training': 7, # training documents / author
-'num_unlabelled':200 , # unlabelled documents / author
-'num_test': 20, # test documents / author
-'training_unlabelled': 10*16, # number of unlabelled documents to examine before re-computing classifiers
-'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
-'num_threads_mining': 4, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
+'num_authors': 2, # number of authors to include into training
+'num_training': 1, # training documents / author
+'num_unlabelled':3 , # unlabelled documents / author
+'num_test': 1, # test documents / author
+'training_unlabelled': 2, # number of unlabelled documents to examine before re-computing classifiers
+'training_iterations': 3, # number of training iterations (=number of re-trained classifiers) 
+'num_threads_mining': 1, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
 'normalize_features': False, # divides the frequency of a token in a document by the total number of tokens in this document,
 			  # similarly the frequency of a character or pos n-gram by the total number of tokens in this document

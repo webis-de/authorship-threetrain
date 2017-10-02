@@ -174,15 +174,16 @@ class documentbase:
 		return libsyntax_tree.st_support(self.handle,pattern.handle)
 	def conditionalEntropy(self,pattern,n):
 		return libsyntax_tree.st_conditionalEntropy(self.handle,pattern.handle,n,None)
-	def mineDiscriminativePatterns(self,numLabels,supportLowerBound,n,k,num_processes=1,timeBetweenSyncs=8):
+	def mineDiscriminativePatterns(self,numLabels,supportLowerBound,n,k,num_processes=1):
 		print("create mining state.")
 		state=libsyntax_tree.st_createMiningState(self.handle,numLabels,supportLowerBound,n,k)
 		print("now go for a mine.")
 		#lst = libsyntax_tree.st_mine(state)
 		libsyntax_tree.st_populateMiningState(state)
 		if num_processes > 1:
-			numIterations = 1000*timeBetweenSyncs
+			numIterations = 8000
 			while libsyntax_tree.st_numCandidates(state) != 0:
+				iteration_start = time.perf_counter()
 				print("numIterations: %f, remaining %u candidates"%(numIterations,libsyntax_tree.st_numCandidates(state)))
 				if numIterations > 2**20:
 					numIterations = 2**20
@@ -194,9 +195,11 @@ class documentbase:
 				libsyntax_tree.st_doParallelMiningIterations(split, int(numIterations))
 				neededTime = time.perf_counter()-startTime
 				state = libsyntax_tree.st_mergeStates(split)
-				print("needed time: %f" % neededTime)
+				iterationTime = time.perf_counter()-iteration_start
+				print("Needed time: %f. Iteration time: %f" % (neededTime,iterationTime))
 				if neededTime != 0:
-					numIterations *= (timeBetweenSyncs/neededTime)**0.8
+					numIterations *= (4*(iterationTime-neededTime)/neededTime)**0.7
+					#spend 80% of the time mining, 20% syncing.
 			'''
 			libsyntax_tree.st_doMiningIterations(state,-1)
 					'''

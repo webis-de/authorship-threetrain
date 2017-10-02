@@ -89,7 +89,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	def prepareDocuments(docs):
 		import pickle
 		print("preparing %d documents" % len(docs))
-		chunksize=2000
+		chunksize=15000
 		if functionCollection is not None:
 			for i in range(0,len(docs),chunksize):
 				chunk = docs[i:i+chunksize]
