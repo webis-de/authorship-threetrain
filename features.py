@@ -262,6 +262,38 @@ class documentbase:
 		if hasattr(self,'functionCollection'):
 			result.functionCollection = self.functionCollection
 		return result
+	@cached_property
+	def byIdentifier(self):
+		result = {}
+		for d in self.documents:
+			if d.identifier in result:
+				result[d.identifier].append(d)
+			else:
+				result[d.identifier] = [d]
+		return result
+	def strippedDuplicates(self,warn=True):
+		#returns a documentbase with duplicates removed. Two documents are considered duplicate iff identifier and author coincide.
+		result = []
+		for docs in self.byIdentifier.values():
+			known_authors = []
+			for doc in docs:
+				if doc.author not in known_authors:
+					known_authors.append(doc.author)
+					result.append(doc)
+			if len(known_authors) > 1 and warn:
+				print("WARNING: Found same text by %d authors" % len(known_authors))
+				print("authors: ",", ".join(str(a) for a in known_authors))
+				print("text:")
+				print(docs[0].text)
+		result = documentbase(result)
+		if hasattr(self,'functionCollection'):
+			result.functionCollection = self.functionCollection
+		return result
+	def hasSameDocument(self,doc):
+		#returns true if a document with same author and identifier occurs
+		if not doc.identifier in self.byIdentifier:
+			return False
+		return doc.author in (d.author for d in self.byIdentifier[doc.identifier])
 class view:
 	__slots__=['functionCollection']
 	def getFeature(self,docbase):

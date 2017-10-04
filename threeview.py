@@ -182,7 +182,11 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 				else:
 					extra_false1+=1
 			if discard and functionCollection is not None:
-				functionCollection.forgetDocument(doc)
+				#forget doc if the same text (=identifier) does not occur anywhere where it is needed
+				idf = doc.identifier
+				if idf not in labelled1.byIdentifier and idf not in labelled2.byIdentifier and idf not in labelled3.byIdentifier and \
+							idf not in testBase.byIdentifier:
+					functionCollection.forgetDocument(doc)
 		labelled1 = labelled1.extend(extraLabelled1)
 		labelled2 = labelled2.extend(extraLabelled2)
 		labelled3 = labelled3.extend(extraLabelled3)
@@ -227,23 +231,23 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 #@profile
 def mainfunc():
 	print("begin threeview.mainfunc")
-	trainIndices = []
-	unlabelledIndices = []
-	testIndices = []
-	author_indices = random.sample(range(3 if config.use_small_cache else 62),config.num_authors)
-	for i in author_indices:
-		range_max = ((i+1)*1000) if not config.use_small_cache else (i*1000+10)
-		avail = set(range(i*1000,range_max))
-		tr = random.sample(avail,config.num_training)
+	trainDocuments = []
+	unlabelledDocuments = []
+	testDocuments = []
+	authors = random.sample(imdb62.documentbase.authors[:3 if config.use_small_cache else 62],config.num_authors)
+	for auth in authors:
+		avail = imdb62.documentbase.byAuthor[auth]
+		if config.use_small_cache:
+			avail = avail[:10]
+		avail = set(avail)
+		tr= random.sample(avail,config.num_training)
+		trainDocuments += tr
 		avail = avail-set(tr)
 		unl = random.sample(avail,config.num_unlabelled)
+		unlabelledDocuments += unl
 		avail = avail-set(unl)
-		tst = random.sample(avail,config.num_test)
-		avail = avail-set(tst)
-		trainIndices += list(tr)
-		unlabelledIndices += list(unl)
-		testIndices += list(tst)
-	indices = trainIndices + unlabelledIndices + testIndices
+		testDocuments += random.sample(avail,config.num_test)
+	usedDocuments = trainDocuments + unlabelledDocuments + testDocuments
 	if config.use_small_cache:
 		print("use small cache.")
 		#imdb62.initialize(indices=indices,filename='small_cache')
@@ -254,9 +258,17 @@ def mainfunc():
 	#imdb62.computeStanfordTrees(indices)
 	#imdb62.readCache(filename='small_cache')
 	print("trees loaded.")
+	'''
 	trainBase = imdb62.documentbase.subbase(trainIndices)
 	testBase = imdb62.documentbase.subbase(testIndices)
 	unlabelledBase = imdb62.documentbase.subbase(unlabelledIndices)
+	'''
+	trainBase = features.documentbase(trainDocuments)
+	trainBase.functionCollection = imdb62.functionCollection
+	unlabelledBase = features.documentbase(unlabelledDocuments)
+	unlabelledBase.functionCollection = imdb62.functionCollection
+	testBase = features.documentbase(testDocuments)
+	testBase.functionCollection = imdb62.functionCollection
 	view1 = features.characterView([3])
 	view1.functionCollection = imdb62.functionCollection
 	view2 = features.lexicalView()
@@ -268,7 +280,7 @@ def mainfunc():
 	with open("results.txt","at") as f:
 		f.write('# '+config.config_str+"\n")
 		prediction = threeTrain(view1, view2, view3, trainBase, unlabelledBase, testBase, config.training_iterations, config.training_unlabelled,f)
-	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testIndices)))
+	print("success rate (three train): %d/%d.\n" % ( len([None for (pred,tr) in zip(prediction, trueLabels) if pred == tr]), len(testDocuments)))
 #@profile
 def runfunc():
 	with diskdict.DiskDict('stanford-trees.db') as stanford_dict, diskdict.DiskDict('tokens.db') as tokens_dict, \

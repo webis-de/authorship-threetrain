@@ -21,7 +21,7 @@ def loadReviews():
 		for line in f:
 			line = line.split('\t')
 			reviews.append(features.document(line[5], line[1]))
-	documentbase = features.documentbase(reviews)
+	documentbase = features.documentbase(reviews).strippedDuplicates()
 	functionCollection = features.documentFunctionCollection()
 	documentbase.functionCollection = functionCollection
 def computeStanfordTrees(indices=None):
