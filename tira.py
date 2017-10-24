@@ -14,13 +14,6 @@ class tiraInterface:
 		self.run = run
 		self.outdir = outdir
 		self.functionCollection = functionCollection
-		searchtext='problem-'
-		pos = input_dataset.find(searchtext)
-		if pos == -1:
-			self.taskId='(NO TASK ID)'
-		else:
-			pos+=len(searchtext)
-			self.taskId = input_dataset[pos,pos+1].upper()
 	def loadCorpus(self):
 		#folder should be a readable folder containing a file called 'meta-file.json'
 		#returns a tuple trainingDocumentbase,unknownDocumentbase of the training and unlabelled documents.
@@ -57,6 +50,11 @@ class tiraInterface:
 	@cached_property
 	def workingDirectory(self):
 		return './'+self.input_dataset+'/'
+	def prepareWorkingDirectory(self):
+		try:
+			os.mkdir(self.workingDirectory)
+		except FileExistsError:
+			pass
 	@cached_property
 	def stanford_db(self):
 		return self.workingDirectory + 'prepared-stanford-trees.db'

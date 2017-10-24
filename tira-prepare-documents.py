@@ -12,4 +12,6 @@ def prepareDocuments(tira,which):
 		prepare_documents.prepareDocumentsChunked(tira.stanford_db,tira.tokens_db,tira.pos_db,tira.c_syntax_tree_db,unknown_dataset)
 if __name__ == '__main__':
 	import sys
-	prepareDocuments(tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],features.documentFunctionCollection()),sys.argv[4])
+	interf=tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],features.documentFunctionCollection())
+	interf.prepareWorkingDirectory()
+	prepareDocuments(interf,sys.argv[4])

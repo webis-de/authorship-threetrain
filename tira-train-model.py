@@ -13,6 +13,7 @@ if len(sys.argv) < 5:
 	print("Usage: see ",sys.argv[0])
 	sys.exit(0)
 tiraInterface = tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],features.documentFunctionCollection())
+tiraInterface.prepareWorkingDirectory()
 training_dataset,unknown_dataset=tiraInterface.loadCorpus()
 with tiraInterface:
 	for model in sys.argv[4:]:
