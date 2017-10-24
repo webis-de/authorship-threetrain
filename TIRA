@@ -5,8 +5,9 @@ check the configuration variable tira_base_directory in config.py
 2. Document preparation
 The algorithms (both training and prediction) need to know the results of the stanford parser, which take some time to compute.
 For this and others, document preparation is the key. Call
-	tira-prepare-documents.py `inputDataset` `run` `outdir` both
-to prepare the documents. Instead of both, you may also pass training or unknown, to prepare only a subset of the documents.
+	tira-prepare-documents.py `inputDataset` `run` `outdir` training
+to prepare the documents. Instead of both, you may also pass unknown or both, to prepare only the unknown documents or all available documents.
+If unknown documents are available in this stage, you can prepare them, too. Otherwise, they will automatically be prepared in step 4.
 3. Model training
 To perform training with Kim et al., run
 	tira-train-models.py `inputDataset` `run` `outdir` kim

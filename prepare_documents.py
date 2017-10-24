@@ -8,13 +8,14 @@ import features
 import stanford_parser
 import syntax_tree
 import diskdict
-def prepareDocumentsChunked(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase,chunksize=1000):
+def prepareDocumentsChunked(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase,chunksize=1000, onlyRelevantDocuments=True):
 	pos=0
 	N=len(documentbase.documents)
 	while pos<N:
-		prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase.subbase(range(pos,min(N,pos+chunksize))))
+		subb = documentbase.subbase(range(pos,min(N,pos+chunksize)))
+		prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, subb, onlyRelevantDocuments)
 		pos += chunksize
-def prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase):
+def prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase, onlyRelevantDocuments=True):
 	functionCollection = documentbase.functionCollection
 	with diskdict.DiskDict(stanford_db) as stanford_dict, diskdict.DiskDict(tokens_db) as tokens_dict, \
 					diskdict.DiskDict(pos_db) as pos_dict, diskdict.DiskDict(c_syntax_tree_db) as st_dict:
@@ -22,6 +23,9 @@ def prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentb
 		functionCollection.getFunction(features.tokensDocumentFunction).setCacheDict(tokens_dict)
 		functionCollection.getFunction(features.posDocumentFunction).setCacheDict(pos_dict)
 		functionCollection.getFunction(features.stDocumentDocumentFunction).setCacheDict(st_dict)
+		docs = documentbase.documents
+		if onlyRelevantDocuments:
+			docs = [d for d in docs if not (d in stanford_dict and d in tokens_dict and d in pos_dict and d in st_dict)]
 		functionCollection.getValues(documentbase.documents, features.stanfordTreeDocumentFunction)
 		functionCollection.moveToMemory(documentbase.documents, [features.stanfordTreeDocumentFunction])
 		functionCollection.getValues(documentbase.documents, features.tokensDocumentFunction)

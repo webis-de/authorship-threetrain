@@ -5,12 +5,15 @@
 import sys
 import tira
 import features
+import prepare_documents
 if len(sys.argv) < 5:
 	print("Usage: see ",sys.argv[0])
 	sys.exit(0)
 functionCollection = features.documentFunctionCollection()
 tiraInterface = tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],functionCollection)
 training_dataset,unknown_dataset=tiraInterface.loadCorpus()
+prepare_documents.prepareDocumentsChunked(tiraInterface.stanford_db, tiraInterface.tokens_db, tiraInterface.pos_db, tiraInterface.c_syntax_tree_db, \
+		unknown_dataset)
 modelfile=None
 if sys.argv[4] == 'kim':
 	modelfile=tiraInterface.model_kim

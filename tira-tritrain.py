@@ -8,9 +8,12 @@ import threeview
 import config
 import features
 import sys
+import prepare_documents
 functionCollection = features.documentFunctionCollection()
 tiraInterface = tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],functionCollection)
 training_dataset,unknown_dataset=tiraInterface.loadCorpus()
+prepare_documents.prepareDocumentsChunked(tiraInterface.stanford_db, tiraInterface.tokens_db, tiraInterface.pos_db, tiraInterface.c_syntax_tree_db, \
+		unknown_dataset)
 def getModel(filename):
 	global functionCollection
 	with open(filename,'rb') as f:
