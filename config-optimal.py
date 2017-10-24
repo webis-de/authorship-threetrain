@@ -49,7 +49,7 @@ configuration = {
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
 'debug_memory': False, # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
-'tira_base_directory': '.' #change to '/media/training-datasets/authorship-attribution/' when running on actual TIRA computer.
+'tira_base_directory': '.' #change to '/media/training-datasets/authorship-attribution/' when running on actual TIRA-VM.
 }
 glob = globals()
 for (key,value) in configuration.items():
