@@ -6,34 +6,25 @@ import liblinearutil
 import pickle
 import tempfile
 import os
-def countermax(ctr):
-	m=max(ctr.values())
-	for key,value in ctr.items():
-		if value == m:
-			return key
-class multiclassLogitAbstract:
-	def getProbabilities(self,vectors):
-		pass
-	def predict(self,vectors):
-		probs = self.getProbabilities(vectors)
-		return [countermax(p) for p in probs]
-class multiclassLogitSklearn(multiclassLogitAbstract):
-	__slots__ = ['occuring_labels','factors','model']
+import features
+class multiclassLogitSklearn(features.mlModel):
+	__slots__ = ['occuring_labels','label_translation','factors','model']
 	def __init__(self,labels,features):
 		#print(features[0])
-		self.occuring_labels = sorted(set(labels))
+		self.occuring_labels = list(set(labels))
+		self.label_translation={label: i for (i,label) in enumerate(self.occuring_labels)}
 		featureMax = [max(features[i][j] for i in range(len(features))) for j in range(len(features[0]))]
 		self.factors = [ 1.0/mx if mx != 0 else 1.0 for mx in featureMax]
 		features=[ [ value*factor for (value,factor) in zip(feature,self.factors)] for feature in features]
 		self.model = sklearn.linear_model.LogisticRegression(penalty='l2',solver=config.scikit_solver,fit_intercept=config.scikit_fit_intercept,\
 				tol=config.scikit_tolerance,multi_class=config.scikit_multi_class,max_iter=10000,\
 				class_weight='balanced' if config.scikit_balance_classes else None,n_jobs=config.num_threads_classifying)
-		self.model.fit(features,labels)
+		self.model.fit(features,[self.label_translation[l] for l in labels])
 		#print("train scikit: ",self.features,labels)
 	def getProbabilities(self,vectors):
 		vectors = [[ v*factor for (v,factor) in zip(vector,self.factors) ] for vector in vectors]
 		return [Counter({label: prob for (label,prob) in zip(self.occuring_labels,probs)}) for probs in self.model.predict_proba(vectors)]
-class multiclassLogitLiblinear:
+class multiclassLogitLiblinear(features.mlModel):
 	__slots__ = ['labels','int_labels','factors','models']
 	def __init__(self, labels, features):
 		self.labels = list(set(labels))
@@ -85,11 +76,10 @@ class multiclassLogitLiblinear:
 				fileobj.flush()
 				self.models.append(liblinearutil.load_model(fileobj.name))
 if config.use_scikit:
-	multiclassLogit=multiclassLogitSklearn
+	multiclassLogit=features.easyparallelArgumentPassingLearningMachine(multiclassLogitSklearn)
 else:
-	multiclassLogit=multiclassLogitLiblinear
-
-class multiclassLogitCompare(multiclassLogitAbstract):
+	multiclassLogit=features.easyparallelArgumentPassingLearningMachine(multiclassLogitLiblinear)
+class multiclassLogitCompare(features.mlModel):
 	def __init__(self,labels,features):
 		self.labels = labels
 		self.distinct_labels = sorted(set(labels))
@@ -107,8 +97,8 @@ class multiclassLogitCompare(multiclassLogitAbstract):
 			pr1sum = sum(prob1.values())
 			pr2sum = sum(prob2.values())
 			prefix=''
-			best1 = countermax(prob1)
-			best2 = countermax(prob2)
+			best1 = features.countermax(prob1)
+			best2 = features.countermax(prob2)
 			if best1 != best2:
 				prefix='best: %s <-> %s ' % (best1,best2)
 			print(prefix+", ".join(label+": "+str(prob1[label]/pr1sum)+" <-> "+str(prob2[label]/pr2sum) \

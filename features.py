@@ -4,7 +4,6 @@ import stanford_parser
 from werkzeug import cached_property
 from collections import Counter
 import pos
-import regression
 import config
 import easyparallel
 import heapq
@@ -35,6 +34,12 @@ def normalizedCounter(*kwds):
 	s = sum(ctr.values())
 	factor = 1.0/sum(ctr.values())
 	return Counter({key: value*factor for (key,value) in ctr.items()})
+def countermax(ctr):
+	m=max(ctr.values())
+	for key,value in ctr.items():
+		if value == m:
+			return key
+
 document_identifier_hashfun = hashlib.sha256
 class document:
 	__slots__=['text','author','identifier']
@@ -122,10 +127,16 @@ class documentFunction:
 				self.cachedValues.removeFromMemory(document.identifier)
 			else:
 				del self.cachedValues[document.identifier]
+	def getFunction(self,functionClass,*args):
+		if hasattr(self,'functionCollection'):
+			return self.functionCollection.getFunction(functionClass,*args)
+		else:
+			return functionClass(*args)
 class derivedDocumentFunction(documentFunction):
 	#does not only look at the text but also at the outcome of another document function
-	__slots__=['predecessorFunction']
+	__slots__=['predecessorFunctionClass','predecessorFunction']
 	def __init__(self,predecessorFunctionClass,*kwds):
+		self.predecessorFunctionClass = predecessorFunctionClass
 		if not hasattr(self,'functionCollection'):
 			self.predecessorFunction = predecessorFunctionClass(*kwds)
 		else:
@@ -196,6 +207,11 @@ class documentFunctionCollection:
 				print("value: ",value)
 				print("value.cachedValues: ",value.cachedValues)
 				raise Exception("Unexpected type for cachedValues.")
+	def getFeatureIdentifier(self,feature):
+		for key,feat in self.instances.items():
+			if feature is feat:
+				return (key[0],*key[1])
+		raise Exception("Cannot find feature "+repr(feature))
 class feature(documentFunction):
 	__slots__=[]
 	def vectorLength(self):
@@ -203,10 +219,9 @@ class feature(documentFunction):
 class combinedFeature(feature):
 	#given features ft1, ..., ftn; this one maps a document d to (ft1(d), ..., ftn(d))
 	__slots__=['subfeatures']
-	def __init__(self, subfeatures,functionCollection=None):
-		self.subfeatures = subfeatures
-		if functionCollection is not None:
-			self.functionCollection = functionCollection
+	def __init__(self, *argss):
+		print("create combined feature with function collection ", self.functionCollection)
+		self.subfeatures=[self.getFunction(*args) for args in argss]
 		super().__init__()
 	def vectorLength(self):
 		return sum(ft.vectorLength() for ft in self.subfeatures)
@@ -307,8 +322,8 @@ class view:
 		return self.getFunction(functionClass,*kwds).getValue(document)
 	def getValues(self,documents,functionClass,*kwds):
 		return self.getFunction(functionClass,*kwds).getValuev(documents)
-	def createClassifier(self,trainingDocbase):
-		return documentClassifier(trainingDocbase,self.getFeature(trainingDocbase))
+	def createClassifier(self,trainingDocbase,ml):
+		return documentClassifier(trainingDocbase,self.getFeature(trainingDocbase),ml)
 
 # now to the concrete stuff
 class stanfordTreeDocumentFunction(documentFunction):
@@ -456,14 +471,15 @@ class characterView(view):
 				values=set()
 				for doc in docbase.documents:
 					values = values.union(set(function.getValue(doc)))
-				features.append(self.getFunction(characterNGramFeature,n,tuple(values)))
+				features.append((characterNGramFeature,n,tuple(values)))
 			else:
 				values = Counter()
 				for doc in docbase.documents:
 					values += function.getValue(doc)
 				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
-				features.append(self.getFunction(characterNGramFeature,n,tuple(selection)))
-		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
+				features.append((characterNGramFeature,n,tuple(selection)))
+		#return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
+		return self.getFunction(combinedFeature,*features)
 class lexicalView(view):
 	__slots__=[]
 	def getFeature(self, docbase):
@@ -502,23 +518,22 @@ class syntacticView(view):
 				values = set()
 				for doc in docbase.documents:
 					values = values.union(set(function.getValue(doc)))
-				features.append(self.getFunction(posNGramFeature,n,tuple(values)))
+				features.append((posNGramFeature,n,tuple(values)))
 			else:
 				values = Counter()
 				for doc in docbase.documents:
 					values += function.getValue(doc)
 				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
-				features.append(self.getFunction(posNGramFeature,n,tuple(selection)))
+				features.append((posNGramFeature,n,tuple(selection)))
 		base = docbase.stDocumentbase
 		if self.treeFeature is None and self.minedTreesCacheFile is not None and os.path.exists(self.minedTreesCacheFile):
 			with open(self.minedTreesCacheFile,'rb') as f:
-				self.treeFeature = self.getFunction(syntaxTreeFrequencyFeature, pickle.load(f))
-
+				self.treeFeature = pickle.load(f)
 				self.remine_trees_until = 0
 		if self.remine_trees_until is 0:
 			treeFeature = self.treeFeature
 		else:
-			treeFeature = self.getFunction(syntaxTreeFrequencyFeature, \
+			treeFeature = (syntaxTreeFrequencyFeature, \
 				tuple(base.mineDiscriminativePatterns(len(pos.pos_tags), self.supportLowerBound, self.n, self.k,\
 												num_processes=config.num_threads_mining)))
 			if self.remine_trees_until is not None:
@@ -527,19 +542,71 @@ class syntacticView(view):
 					self.treeFeature = treeFeature
 			if self.minedTreesCacheFile is not None:
 				with open(self.minedTreesCacheFile,'wb') as f:
-					pickle.dump(treeFeature.trees,f)
+					pickle.dump(trees,f)
 		features.append(treeFeature)
-		return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
+		#return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
+		return self.getFunction(combinedFeature,*features)
 		#return treeFeature
+	def setTreeFeature(self,feature):
+		self.treeFeature = self.functionCollection.getFeatureIdentifier(feature)
+		self.remine_trees_until=0
+	def readTreeFeatureFromClassifier(self,classifier):
+		self.setTreeFeature(classifier.feature)
+class kimView(view):
+	__slots__= ['supportLowerBound', 'n', 'k']
+	def __init__(self,supportLowerBound=0, n=10, k=2):
+		self.supportLowerBound = supportLowerBound
+		self.n=n
+		self.k=k
+	def getFeature(self,docbase):
+		return self.getFunction(syntaxTreeFrequencyFeature, tuple(docbase.stDocumentbase.mineDiscriminativePatterns(len(pos.pos_tags), \
+			self.supportLowerBound, self.n, self.k, num_processes=config.num_threads_mining)))
+class mlModel:
+	# a model is a mapping from an abstract feature space F and a set of labels L to the unit interval [0,1].
+	# they are created from by a machine learning algorithm. This class should be inherited from
+	__slots__=[]
+	def getProbabilities(self,vectors):
+		raise NotImplementedError
+		#vectors is a list of elements of F.
+		#should return a dict or counter of the form {l1: p1, ..., ln:pn} where L={l1,...,ln} are the different labels
+		#and p1,...,pn in [0,1]. A higher value for pi means that label li is more likely.
+	def getPrediction(self,vectors):
+		# gets a list of elements of V and returns a list of same lengths of elements in L.
+		# returns an element with maximal probability
+		return countermax(self.getProbabilities(vectors))
+	# derived classes should further make sure they are picklable (i.e. implement __getstate__ and __setstate__)
+class learningMachine:
+	# a learning maching takes a list of tuples (v,l) where v is an element of an abstract feature space F and
+	# l is a label. It returns an instance of mlModel with the same label set and feature space.
+	# instances of this class should be hashable.
+	__slots__=[]
+	def getModel(self,labels,vectors):
+		pass
+class argumentPassingLearningMachine(learningMachine):
+	#takes a class derived from mlModel. For each call of getModel, it passes the arguments to the __init__-function of the given class.
+	__slots__=['modelClass']
+	def __init__(self,modelClass):
+		self.modelClass = modelClass
+	def getModel(self,labels,vectors):
+		return self.modelClass(labels,vectors)
+class easyparallelArgumentPassingLearningMachine(learningMachine):
+	#takes a class derived from mlModel. For each call of getModel, it passes the arguments to the __init__-function of the given class.
+	#the init-function MAY be called in another process (using multiprocessing), so it should not modify any global state.
+	__slots__=['modelClass']
+	def __init__(self,modelClass):
+		self.modelClass = modelClass
+	def getModel(self,labels,vectors):
+		return easyparallel.callWorkerFunction(self.modelClass,labels,vectors)
 class documentClassifier(documentFunction):
-	__slots__=['feature','regression']
-	def __init__(self,trainingDocbase,feature):
+	__slots__=['feature','model']
+	def __init__(self,trainingDocbase,feature,ml):
 		docbase = trainingDocbase
 		self.feature = feature
 		authors = [doc.author for doc in trainingDocbase.documents]
 		vectors = feature.getValuev(trainingDocbase.documents)
 		print("start classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
-		self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,authors,vectors)
+		#self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,authors,vectors)
+		self.model = ml.getModel(authors,vectors)
 		print("returned from classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		if hasattr(feature,'functionCollection'):
 			self.functionCollection = feature.functionCollection
@@ -549,7 +616,8 @@ class documentClassifier(documentFunction):
 		print("start predicting with %d features and %d documents" % (self.feature.vectorLength(),len(documents)))
 		vectors = self.feature.getValuev(documents)
 		print("got %d features for %d documents" % (self.feature.vectorLength(),len(documents)))
-		result = easyparallel.callWorkerFunction(self.regression.getProbabilities,vectors)
+		#result = easyparallel.callWorkerFunction(self.regression.getProbabilities,vectors)
+		result = self.model.getProbabilities(vectors)
 		print("got probabilities %d features and %d documents" % (self.feature.vectorLength(),len(documents)))
 		return result
 		'''
@@ -558,8 +626,21 @@ class documentClassifier(documentFunction):
 		'''
 	def predict(self,documents):
 		probs = self.getValuev(documents)
-		return [regression.countermax(p) for p in probs]
+		return [countermax(p) for p in probs]
+	def dumps(self):
+		return pickle.dumps( (self.functionCollection.getFeatureIdentifier(self.feature), self.model))
+	def loads(self,state,functionCollection):
+		self.functionCollection = functionCollection
+		state = pickle.loads(state)
+		self.feature = functionCollection.getFunction(*state[0])
+		self.model = state[1]
+		super().__init__()
+def loadClassifier(state,functionCollection):
+	result = documentClassifier.__new__(documentClassifier)
+	result.loads(state,functionCollection)
+	return result
 if __name__== '__main__':
+	import regression
 	coll = documentFunctionCollection()
 	base = documentbase([document('This is your father','papa'), document('This is your mother.', 'mama')])
 	base.functionCollection = coll
@@ -568,19 +649,23 @@ if __name__== '__main__':
 	feature1 = view1.getFeature(base)
 	print("feature 1:")
 	print(feature1.getValuev(base.documents))
-	classifier1 = documentClassifier(base, feature1)
+	print("use this learning maching: ",regression.multiclassLogit)
+	classifier1 = documentClassifier(base, feature1, regression.multiclassLogit)
 	print(classifier1.getValuev(base.documents))
 	view2 = lexicalView()
 	view2.functionCollection = coll
 	feature2 = view2.getFeature(base)
 	print("feature 2:")
 	print(feature2.getValuev(base.documents))
-	classifier2 = documentClassifier(base, feature2)
+	classifier2 = documentClassifier(base, feature2, regression.multiclassLogit)
 	print(classifier2.getValuev(base.documents))
 	view3 = syntacticView([1,2,3],0,10,2)
 	view3.functionCollection = coll
 	feature3 = view3.getFeature(base)
 	print("feature 3:")
 	print(feature3.getValuev(base.documents))
-	classifier3 = documentClassifier(base, feature3)
+	classifier3 = documentClassifier(base, feature3, regression.multiclassLogit)
 	print(classifier3.getValuev(base.documents))
+	dumped = classifier3.dumps()
+	print("clasifier 3 got dumped to "+repr(dumped))
+	print(loadClassifier(dumped,coll).getValuev(base.documents))

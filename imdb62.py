@@ -190,6 +190,7 @@ def doMiningTest(base):
 	print("%d trees exist." % st.num_trees)
 
 if __name__ == '__main__':
+	print("num. documents: ",[len(v) for v in documentbase.byAuthor.values()])
 	with diskdict.DiskDict('stanford-trees.db') as stanford_dict, diskdict.DiskDict('tokens.db') as tokens_dict, \
 		diskdict.DiskDict('pos.db') as pos_dict, diskdict.DiskDict('c_syntax_tree.db') as st_dict:
 		functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(stanford_dict)

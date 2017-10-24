@@ -38,7 +38,7 @@ def getSuccessRate(testBase,classifier):
 def getAccumulatedPrediction(testBase,*classifiers):
 	probs = [cl.getValuev(testBase.documents) for cl in classifiers]
 	acc = [reduce(lambda c1,c2: c1+c2, (p[i] for p in probs)) for i in range(len(testBase.documents))]
-	return [regression.countermax(c) for c in acc]
+	return [features.countermax(c) for c in acc]
 def getAccumulatedSuccessRate(testBase,*classifiers):
 	return len([None for (pred,doc) in zip(getAccumulatedPrediction(testBase,*classifiers),testBase.documents) if pred == doc.author])
 def getTrueLabels(documents):
@@ -64,13 +64,15 @@ def getBalancedSubbase(documentbase,classifier=None,predicted_probabilities=None
 		result.functionCollection = documentbase.functionCollection
 	return result
 def trainAndPredict(view,documentbase,test_documents):
-	classifier = view.createClassifier(documentbase)
+	classifier = view.createClassifier(documentbase,regression.multiclassLogit)
 	return classifier,classifier.predict(test_documents)
 
 #features that are derived from stanfordTreeDocumentFunction
 neededDocumentFunctions = [features.tokensDocumentFunction,features.posDocumentFunction,features.stDocumentDocumentFunction]
 #@profile
-def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None):
+def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None,initial_classifier1=None,\
+			initial_classifier2=None,initial_classifier3=None):
+#if no initial classifiers are given, they are learned from the trainingBase.
 	labelled1 = trainingBase
 	labelled2 = trainingBase
 	labelled3 = trainingBase
@@ -85,7 +87,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	extra_false3=0
 	parallelGroup = easyparallel.ParallelismGroup(3)
 	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
-	@profile
+	#@profile
 	def prepareDocuments(docs):
 		import pickle
 		print("preparing %d documents" % len(docs))
@@ -107,9 +109,16 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					print("leaking: ",len(objgraph.get_leaking_objects()))
 	prepareDocuments(trainingBase.documents)
 	prepareDocuments(testBase.documents)
+	verificationBase = testBase.subbase([i for i,doc in enumerate(testBase.documents) if doc.author is not None])
 	for iteration in range(num_iterations):
 		gc.collect()
-		choiceIndices = random.sample(range(len(unlabelledBase.documents)),num_unlabelled)
+		remaining_unlabelled = len(unlabelledBase.documents)
+		if remaining_unlabelled == 0:
+			break
+		if remaining_unlabelled < num_unlabelled:
+			choiceIndices = random.sample(range(remaining_unlabelled,num_unlabelled))
+		else:
+			choiceIndices = list(range(remaining_unlabelled))
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
 		prepareDocuments(choice)
 		cached_keys = [sorted(list(functionCollection.getFunction(f).cachedValues.memory_cache)) for f in neededDocumentFunctions]
@@ -121,28 +130,50 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		classifier3 = view3.createClassifier(balanced3)
 		classified3 = classifier3.predict(choice)
 		'''
-		parallelGroup.add_branch(trainAndPredict,view1,balanced1,choice)
-		parallelGroup.add_branch(trainAndPredict,view2,balanced2,choice)
-		parallelGroup.add_branch(trainAndPredict,view3,balanced3,choice)
+		if iteration == 0 and initial_classifier1 is not None:
+			classifier1=initial_classifier1
+			parallelGroup.add_branch(classifier1.predict,choice)
+		else:
+			parallelGroup.add_branch(trainAndPredict,view1,balanced1,choice)
+		if iteration == 0 and initial_classifier2 is not None:
+			classifier2=initial_classifier2
+			parallelGroup.add_branch(classifier2.predict,choice)
+		else:
+			parallelGroup.add_branch(trainAndPredict,view2,balanced2,choice)
+		if iteration == 0 and initial_classifier3 is not None:
+			classifier3=initial_classifier3
+			parallelGroup.add_branch(classifier3.predict,choice)
+		else:
+			parallelGroup.add_branch(trainAndPredict,view3,balanced3,choice)
 		print("waiting for classification and prediction...")
 		parallelGroup_results = parallelGroup.get_results()
 		print("got results!")
-		classifier1,classified1 = parallelGroup_results[0]
-		classifier2,classified2 = parallelGroup_results[1]
-		classifier3,classified3 = parallelGroup_results[2]
-		print("prediction testBase for the records...")
-		parallelGroup.add_branch(classifier1.getValuev,testBase.documents)
-		parallelGroup.add_branch(classifier2.getValuev,testBase.documents)
-		parallelGroup.add_branch(classifier3.getValuev,testBase.documents)
-		parallelGroup.get_results()
-		print("got results for testBase!")
-		resline="%d,%d,%d,%d,%d,%d" % (iteration,len(testBase.documents),getSuccessRate(testBase,classifier1),\
-			getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),\
-			getAccumulatedSuccessRate(testBase,classifier1,classifier2,classifier3))
-		print("RESULT:",resline)
-		if results_stream != None:
-			results_stream.write(resline+"\n")
-			results_stream.flush()
+		if iteration == 0 and initial_classifier1 is not None:
+			classified1=parallelGroup_results[0]
+		else:
+			classifier1,classified1 = parallelGroup_results[0]
+		if iteration == 0 and initial_classifier2 is not None:
+			classified2=parallelGroup_results[1]
+		else:
+			classifier2,classified2 = parallelGroup_results[1]
+		if iteration == 0 and initial_classifier3 is not None:
+			classified3=parallelGroup_results[2]
+		else:
+			classifier3,classified3 = parallelGroup_results[2]
+		if verificationBase.documents:
+			print("prediction verificationBase for the records...")
+			parallelGroup.add_branch(classifier1.getValuev,verificationBase.documents)
+			parallelGroup.add_branch(classifier2.getValuev,verificationBase.documents)
+			parallelGroup.add_branch(classifier3.getValuev,verificationBase.documents)
+			parallelGroup.get_results()
+			print("got results for verificationBase!")
+			resline="%d,%d,%d,%d,%d,%d" % (iteration,len(verificationBase.documents),getSuccessRate(verificationBase,classifier1),\
+				getSuccessRate(verificationBase,classifier2),getSuccessRate(verificationBase,classifier3),\
+				getAccumulatedSuccessRate(verificationBase,classifier1,classifier2,classifier3))
+			print("RESULT:",resline)
+			if results_stream != None:
+				results_stream.write(resline+"\n")
+				results_stream.flush()
 		extraLabelled1=[]
 		extraLabelled2=[]
 		extraLabelled3=[]
@@ -213,17 +244,18 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		classifier2=None
 		classifier3=None
 		print("added documents (true/false): %d/%d   %d/%d   %d/%d" % (extra_true1,extra_false1,extra_true2,extra_false2,extra_true3,extra_false3))
-	classifier1 = view1.createClassifier(balanced1)
-	classifier2 = view2.createClassifier(balanced2)
-	classifier3 = view3.createClassifier(balanced3)
+	classifier1 = view1.createClassifier(balanced1,regression.multiclassLogit)
+	classifier2 = view2.createClassifier(balanced2,regression.multiclassLogit)
+	classifier3 = view3.createClassifier(balanced3,regression.multiclassLogit)
 	pred = getAccumulatedPrediction(testBase,classifier1,classifier2,classifier3)
-	correct = len([None for (pred,doc) in zip(pred,testBase.documents) if pred == doc.author])
-	resline="%d,%d,%d,%d,%d,%d" % (num_iterations,len(testBase.documents),getSuccessRate(testBase,classifier1),\
-		getSuccessRate(testBase,classifier2),getSuccessRate(testBase,classifier3),correct)
-	print("RESULTS: ",resline)
-	if results_stream != None:
-		results_stream.write(resline+"\n")
-		results_stream.flush()
+	if verificationBase.documents:
+		correct = len([None for (pred,doc) in zip(pred,testBase.documents) if pred == doc.author])
+		resline="%d,%d,%d,%d,%d,%d" % (num_iterations,len(verificationBase.documents),getSuccessRate(verificationBase,classifier1),\
+			getSuccessRate(verificationBase,classifier2),getSuccessRate(verificationBase,classifier3),correct)
+		print("RESULTS: ",resline)
+		if results_stream != None:
+			results_stream.write(resline+"\n")
+			results_stream.flush()
 	classifier1.clearCache()
 	classifier2.clearCache()
 	classifier3.clearCache()

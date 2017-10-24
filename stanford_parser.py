@@ -53,6 +53,23 @@ class stanfordTree:
 			for ch in self.children:
 				ch.recursiveFree()
 			del self.children
+	def __getstate__(self):
+		return (0,self.label,self.data,self.rangeStart,self.rangeEnd,self.children)
+	def __setstate__(self,state):
+		if isinstance(state,dict):
+			#print("state: ",state)
+			for key,value in state.items():
+				if key in self.__slots__:
+					setattr(self,key,value)
+		elif isinstance(state,tuple):
+			if state[0] == 0:
+				_,self.label,self.data,self.rangeStart,self.rangeEnd,self.children = state
+				for ch in self.children:
+					ch.parent=self
+			elif state[0] == None and len(state) == 2 and isinstance(state[1],dict):
+				self.__setstate__(state[1])
+			else:
+				raise Exception("Cannot unpickle stanford tree (version ",state[0],")")
 def readTreeFromStream(stream,parent=None):
 	result=stanfordTree(stream.readline().strip(), parent)
 	result.data = stream.readline().strip() or None

@@ -9,7 +9,7 @@ configuration = {
 'num_training': 7, # training documents / author
 'num_unlabelled':200 , # unlabelled documents / author
 'num_test': 20, # test documents / author
-'training_unlabelled': 10*16, # number of unlabelled documents to examine before re-computing classifiers
+'training_unlabelled': 1, # number of unlabelled documents to examine before re-computing classifiers
 'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
 'num_threads_mining': 4, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
@@ -48,7 +48,8 @@ configuration = {
 'featurelimit_max_word_unigrams': None, #similar. Defauls to None
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
-'debug_memory': False # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
+'debug_memory': False, # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
+'tira_base_directory': '.' #change to '/media/training-datasets/authorship-attribution/' when running on actual TIRA computer.
 }
 glob = globals()
 for (key,value) in configuration.items():

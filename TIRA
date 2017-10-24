@@ -1,0 +1,24 @@
+Usage for the TIRA platform (cf. www.tira.io)
+
+1. Configuration
+check the configuration variable tira_base_directory in config.py
+2. Document preparation
+The algorithms (both training and prediction) need to know the results of the stanford parser, which take some time to compute.
+For this and others, document preparation is the key. Call
+	tira-prepare-documents.py `inputDataset` `run` `outdir` both
+to prepare the documents. Instead of both, you may also pass training or unknown, to prepare only a subset of the documents.
+3. Model training
+To perform training with Kim et al., run
+	tira-train-models.py `inputDataset` `run` `outdir` kim
+To perform training with Qian et al., run
+	tira-train-models.py `inputDataset` `run` `outdir` lexical character syntactic
+Of course, you can also pass any non-empty subset of {kim,lexical,character,syntactic}.
+4. Prediction
+To perform prediction with Kim et al, run
+	tira-simple-predict.py `inputDataset` `run` `outdir` kim
+Of course, you may also pass lexical, character of syntactic.
+To perform tri-training with Qian et al, make sure step 3. is performed for lexical, character and syntactic and then run
+	tira-tritrain.py `inputDataset` `run` `outdir` 1
+The optional 1 in the end may be left off. It may also be replaced by a natural number n, to
+perform tri-training n times, each time with a different subdivision of "unlabelled" and "testing" data,
+such that each unknown document belongs exactly once to the testing data.
