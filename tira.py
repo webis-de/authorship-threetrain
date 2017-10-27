@@ -40,7 +40,7 @@ class tiraInterface:
 	def writeResults(self,unknown_docbase, prediction):
 		print("prediction: ", prediction)
 		outdir=os.path.normpath(self.outdir+'/')+'/'
-		os.mkdirs(outdir,exist_ok=True)
+		os.makedirs(outdir,exist_ok=True)
 		answers = []
 		for document,pred in zip(unknown_docbase.documents, prediction):
 			answers.append({'unknown_text': os.path.basename(self._unknown_paths[document.identifier]), \

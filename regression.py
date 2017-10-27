@@ -1,8 +1,6 @@
 import config
 import concurrent.futures
 from collections import Counter
-import sklearn.linear_model
-import liblinearutil
 import pickle
 import tempfile
 import os
@@ -76,8 +74,10 @@ class multiclassLogitLiblinear(features.mlModel):
 				fileobj.flush()
 				self.models.append(liblinearutil.load_model(fileobj.name))
 if config.use_scikit:
+	import sklearn.linear_model
 	multiclassLogit=features.easyparallelArgumentPassingLearningMachine(multiclassLogitSklearn)
 else:
+	import liblinearutil
 	multiclassLogit=features.easyparallelArgumentPassingLearningMachine(multiclassLogitLiblinear)
 class multiclassLogitCompare(features.mlModel):
 	def __init__(self,labels,features):
@@ -115,7 +115,7 @@ if __name__ == '__main__':
 	model = multiclassLogitLiblinear(labels,features)
 	print(model.getProbabilities(testFeatures))
 	'''
-	model = multiclassLogitCompare(labels,features)
+	model = multiclassLogit(labels,features)
 	print(model.getProbabilities(testFeatures))
 	pickled = pickle.dumps(model)
 	print(pickled)

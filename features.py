@@ -573,7 +573,7 @@ class mlModel:
 	def getPrediction(self,vectors):
 		# gets a list of elements of V and returns a list of same lengths of elements in L.
 		# returns an element with maximal probability
-		return countermax(self.getProbabilities(vectors))
+		return [countermax(p) for p in self.getProbabilities(vectors)]
 	# derived classes should further make sure they are picklable (i.e. implement __getstate__ and __setstate__)
 class learningMachine:
 	# a learning maching takes a list of tuples (v,l) where v is an element of an abstract feature space F and
