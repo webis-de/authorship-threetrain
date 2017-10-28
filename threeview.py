@@ -302,9 +302,9 @@ def mainfunc():
 	'''
 	trainBase = features.documentbase(trainDocuments)
 	trainBase.functionCollection = imdb62.functionCollection
-	unlabelledBase = features.documentbase(unlabelledDocuments)
+	unlabelledBase = features.documentbase([features.document(doc.text) for doc in unlabelledDocuments])
 	unlabelledBase.functionCollection = imdb62.functionCollection
-	testBase = features.documentbase(testDocuments)
+	testBase = features.documentbase([features.document(doc.text) for doc in testDocuments])
 	testBase.functionCollection = imdb62.functionCollection
 	view1 = features.characterView([3])
 	view1.functionCollection = imdb62.functionCollection

@@ -16,10 +16,12 @@ class ParallelismGroup:
 	def __init__(self,num_kernels):
 		#creates at most `num_kernels` subprocesses
 		self.num_kernels = num_kernels
-		self.pool = multiprocessing.Pool(num_kernels)
+		self.pool = None
 		self.lock = threading.Lock()
 		self.threads = []
 	def add_branch(self,fun,*args,**kwargs):
+		if self.pool is None:
+			self.pool = multiprocessing.Pool(num_kernels)
 		self.threads.append(OuterThread(fun,args,kwargs,self.lock,self.pool))
 	def map_branches(self,fun,args):
 		for ar in args:
@@ -36,6 +38,7 @@ class ParallelismGroup:
 				raise th.exception
 		result = [th.result for th in self.threads]
 		self.threads = []
+		self.pool = None
 		return result
 class OuterThread(threading.Thread):
 	__slots__ = ['fun','args','kwargs','lock','pool','local','result','excepted','exception']
