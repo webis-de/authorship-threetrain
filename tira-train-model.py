@@ -15,6 +15,11 @@ if len(sys.argv) < 5:
 tiraInterface = tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],features.documentFunctionCollection())
 tiraInterface.prepareWorkingDirectory()
 training_dataset,unknown_dataset=tiraInterface.loadCorpus()
+print("training authors: ",training_dataset.authors)
+if tuple(unknown_dataset.authors) != (None,):
+	raise Exception("Unknown documents should not come labelled.")
+if None in training_dataset.authors:
+	raise Exception("Training data should come labelled.")
 with tiraInterface:
 	for model in sys.argv[4:]:
 		filename=None
