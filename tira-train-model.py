@@ -32,7 +32,13 @@ with tiraInterface:
 			filename=tiraInterface.model_chr
 		elif model == 'syntactic':
 			view=features.syntacticView([1,2,3], config.min_support, config.num_bins, config.max_embeddable_edges)
+			view.functionCollection = training_dataset.functionCollection
 			filename=tiraInterface.model_syn
+			try:
+				with open(tiraInterface.model_kim,'rb') as f:
+					view.readTreeFeatureFromClassifier(features.loadClassifier(f.read(),training_dataset.functionCollection))
+			except FileNotFoundError:
+				pass
 		else:
 			print("Unknown model: '%s'" % model)
 			sys.exit(1)
