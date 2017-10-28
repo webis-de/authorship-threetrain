@@ -211,7 +211,6 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 					extraLabelled1.append(doc)
 				else:
 					extraLabelled1.append(features.document(doc.text,l2))
-				extraLabelled1.append(doc)
 				if doc.author == l2:
 					extra_true1+=1
 				else:
