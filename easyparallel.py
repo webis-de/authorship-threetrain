@@ -21,7 +21,7 @@ class ParallelismGroup:
 		self.threads = []
 	def add_branch(self,fun,*args,**kwargs):
 		if self.pool is None:
-			self.pool = multiprocessing.Pool(num_kernels)
+			self.pool = multiprocessing.Pool(self.num_kernels)
 		self.threads.append(OuterThread(fun,args,kwargs,self.lock,self.pool))
 	def map_branches(self,fun,args):
 		for ar in args:
