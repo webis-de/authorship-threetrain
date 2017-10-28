@@ -228,6 +228,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		print("labelled 1: ",Counter([d.author for d in labelled1.documents]))
 		print("labelled 2: ",Counter([d.author for d in labelled2.documents]))
 		print("labelled 3: ",Counter([d.author for d in labelled3.documents]))
+		if None in labelled1.authors or None in labelled2.authors or None in labelled3.authors:
+			raise Exception("Did not expect to find stupid labels here.")
 		unlabelledBase = unlabelledBase.subbase(list(set(range(len(unlabelledBase.documents))) - set(choiceIndices)))
 		if config.undersample:
 			'''
