@@ -32,5 +32,6 @@ with tiraInterface:
 	classifier=None
 	with open(modelfile,'rb') as f:
 		classifier=features.loadClassifier(f.read(),functionCollection)
+	print("possible labels: ",classifier.model.occuring_labels)
 	prediction = classifier.predict(unknown_dataset.documents)
 tiraInterface.writeResults(unknown_dataset, prediction)

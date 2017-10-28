@@ -73,6 +73,8 @@ neededDocumentFunctions = [features.tokensDocumentFunction,features.posDocumentF
 def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None,initial_classifier1=None,\
 			initial_classifier2=None,initial_classifier3=None):
 #if no initial classifiers are given, they are learned from the trainingBase.
+	if None in trainingBase.authors:
+		raise Exception("Training Base should be labelled.")
 	labelled1 = trainingBase
 	labelled2 = trainingBase
 	labelled3 = trainingBase
@@ -180,6 +182,8 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		for l1,l2,l3,doc in zip(classified1,classified2,classified3,choice):
 			print("classified: %s, %s, %s. true: %s"%(l1,l2,l3,doc.author))
 			#print(p1,p2,p3)
+			if l1 is None or l2 is None or l3 is None:
+				raise Exception("Classifier should assign proper labels (i.e. distinct from None)")
 			discard=True
 			if l1 == l2:
 				discard=False
