@@ -33,6 +33,7 @@ class ParallelismGroup:
 		#BLOCKS until all created branches return. Returns the results of the branched function calls in order of calling add_branch (not thread-safe)
 		for th in self.threads:
 			th.join()
+		self.pool.close()
 		for th in self.threads:
 			if th.excepted:
 				raise th.exception
