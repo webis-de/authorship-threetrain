@@ -9,6 +9,8 @@ import config
 import features
 import sys
 import prepare_documents
+import diskdict
+from math import ceil
 functionCollection = features.documentFunctionCollection()
 tiraInterface = tira.tiraInterface(sys.argv[1],sys.argv[2],sys.argv[3],functionCollection)
 tiraInterface.prepareWorkingDirectory()
@@ -23,9 +25,21 @@ if len(sys.argv) >= 5:
 	num_subdivisions = int(sys.argv[4])
 else:
 	num_subdivisions = 1
-subdivision_length = int(len(unknown_dataset.documents)/num_subdivisions)
+subdivision_length = ceil(len(unknown_dataset.documents)/num_subdivisions)
 subdivisions = [range(i*subdivision_length,min((i+1)*subdivision_length,len(unknown_dataset.documents))) for i in range(num_subdivisions)]
+print("subdivisions: ",subdivisions)
 prediction = []
+if len(sys.argv) >= 6:
+	if sys.argv[5] == 'output':
+		with diskdict.DiskDict(tiraInterface.tritrain_results_cache) as results_cache:
+			identifiers = [d.identifier for d in unknown_dataset.documents]
+			prediction = results_cache.fetchMany(identifiers)
+			print("read prediction for ",identifiers," : ", prediction)
+			tiraInterface.writeResults(unknown_dataset, prediction)
+		sys.exit(0)
+	index=int(sys.argv[5])
+	subdivisions = subdivisions[index:index+1]
+	num_subdivisions=1
 with tiraInterface:
 	initial_classifier1=getModel(tiraInterface.model_chr)
 	initial_classifier2=getModel(tiraInterface.model_lex)
@@ -38,15 +52,27 @@ with tiraInterface:
 	view3.functionCollection = training_dataset.functionCollection
 	view3.readTreeFeatureFromClassifier(initial_classifier3)
 	for i in range(num_subdivisions):
-		unlabelledIndices=[]
-		if num_subdivisions > 1:
-			for j in range(num_subdivisions):
-				if j!= i:
-					unlabelledIndices += subdivisions[j]
-		else:
-			unlabelledIndices = range(len(unknown_dataset.documents))
+		if not subdivisions[i]:
+			continue
+		unlabelledIndices = range(len(unknown_dataset.documents))
+		if num_subdivisions > 1 or len(sys.argv) >= 6:
+			#for j in range(num_subdivisions):
+			#	if j!= i:
+			#		unlabelledIndices += subdivisions[j]
+			unlabelledIndices = list(set(unlabelledIndices) - set(subdivisions[i]))
+		#else:
+		print("unlabelled indices: ", unlabelledIndices)
+		print("testIndices: ", subdivisions[i])
 		unlabelledBase=unknown_dataset.subbase(unlabelledIndices)
 		testBase=unknown_dataset.subbase(subdivisions[i])
 		prediction += threeview.threeTrain(view1,view2,view3,training_dataset,unlabelledBase,testBase,config.training_iterations, \
 			config.training_unlabelled, None, initial_classifier1, initial_classifier2, initial_classifier3)
-tiraInterface.writeResults(unknown_dataset, prediction)
+if len(sys.argv) >= 6:
+	with diskdict.DiskDict(tiraInterface.tritrain_results_cache) as results_cache:
+		documents = [unknown_dataset.documents[index] for index in subdivisions[0]]
+		identifiers = [d.identifier for d in documents]
+		print("write prediction for ",identifiers," : ", prediction)
+		for ident,pred in zip(identifiers, prediction):
+			results_cache[ident] = pred
+else:
+	tiraInterface.writeResults(unknown_dataset, prediction)

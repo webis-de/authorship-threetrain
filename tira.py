@@ -80,6 +80,9 @@ class tiraInterface:
 	@cached_property
 	def model_kim(self):
 		return self.workingDirectory + 'kim-model'
+	@cached_property
+	def tritrain_results_cache(self):
+		return self.workingDirectory + 'tritrain-results-cache.db'
 	def __enter__(self):
 		self._entered=[]
 		stanford_dict = diskdict.DiskDict(self.stanford_db)
