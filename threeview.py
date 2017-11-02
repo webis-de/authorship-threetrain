@@ -117,10 +117,12 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		remaining_unlabelled = len(unlabelledBase.documents)
 		if remaining_unlabelled == 0:
 			break
-		if remaining_unlabelled < num_unlabelled:
+		if remaining_unlabelled > num_unlabelled:
 			choiceIndices = random.sample(range(remaining_unlabelled),num_unlabelled)
 		else:
 			choiceIndices = list(range(remaining_unlabelled))
+		if len(choiceIndices) > num_unlabelled:
+			raise Exception("Error detected.")
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
 		prepareDocuments(choice)
 		cached_keys = [sorted(list(functionCollection.getFunction(f).cachedValues.memory_cache)) for f in neededDocumentFunctions]
