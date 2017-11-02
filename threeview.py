@@ -118,7 +118,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		if remaining_unlabelled == 0:
 			break
 		if remaining_unlabelled < num_unlabelled:
-			choiceIndices = random.sample(range(remaining_unlabelled,num_unlabelled))
+			choiceIndices = random.sample(range(remaining_unlabelled),num_unlabelled)
 		else:
 			choiceIndices = list(range(remaining_unlabelled))
 		choice = [unlabelledBase.documents[i] for i in choiceIndices]
