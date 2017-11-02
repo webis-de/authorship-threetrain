@@ -542,7 +542,7 @@ class syntacticView(view):
 					self.treeFeature = treeFeature
 			if self.minedTreesCacheFile is not None:
 				with open(self.minedTreesCacheFile,'wb') as f:
-					pickle.dump(trees,f)
+					pickle.dump(treeFeature,f)
 		features.append(treeFeature)
 		#return combinedFeature(features,self.functionCollection if hasattr(self,'functionCollection') else None)
 		return self.getFunction(combinedFeature,*features)
