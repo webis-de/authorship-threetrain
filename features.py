@@ -330,7 +330,8 @@ class stanfordTreeDocumentFunction(documentFunction):
 	__slots__=[]
 	# to each document, return a list of stanford trees, encoding the tokenization, pos-tagging and syntactic structure
 	def mappingv(self,documents):
-		return easyparallel.callWorkerFunction(stanford_parser.parseText,[d.text for d in documents])
+		#return stanford_parser.parseTextsParallel([d.text for d in documents])
+		return stanford_parser.parseText([d.text for d in documents])
 class tokensDocumentFunction(derivedDocumentFunction):
 	__slots__=[]
 	#for each document, returns a list of tokens

@@ -4,6 +4,8 @@ import tempfile
 import sys
 from werkzeug import cached_property
 import pickle
+import easyparallel
+from math import ceil
 class stanfordTree:
 	__slots__ = ['label','data','parent','rangeStart','rangeEnd','children']
 	def __init__(self, label, parent=None, position=None):
@@ -77,6 +79,19 @@ def readTreeFromStream(stream,parent=None):
 	for _ in range(num_children):
 		readTreeFromStream(stream,result)
 	return result
+def parseTextsParallel(texts,num_kernels=4):
+	group=easyparallel.ParallelismGroup(num_kernels)
+	num_texts = len(texts)
+	texts_per_chunk = ceil(float(num_texts)/float(num_kernels))
+	index=0
+	for i in range(num_kernels):
+		nextIndex=num_texts if i == num_kernels-1 else (i+1)*texts_per_chunk
+		group.add_branch(parseText,texts[index:nextIndex])
+		index=nextIndex
+	res=[]
+	for lst in group.get_results():
+		res += lst
+	return res
 def parseText(texts):
 	if texts == []:
 		return []

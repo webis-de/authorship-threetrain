@@ -8,7 +8,7 @@ import features
 import stanford_parser
 import syntax_tree
 import diskdict
-def prepareDocumentsChunked(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase,chunksize=1000, onlyRelevantDocuments=True):
+def prepareDocumentsChunked(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentbase,chunksize=100, onlyRelevantDocuments=True):
 	pos=0
 	N=len(documentbase.documents)
 	while pos<N:
@@ -26,11 +26,13 @@ def prepareDocuments(stanford_db, tokens_db, pos_db, c_syntax_tree_db, documentb
 		docs = documentbase.documents
 		if onlyRelevantDocuments:
 			docs = [d for d in docs if not (d in stanford_dict and d in tokens_dict and d in pos_dict and d in st_dict)]
-		functionCollection.getValues(documentbase.documents, features.stanfordTreeDocumentFunction)
-		functionCollection.moveToMemory(documentbase.documents, [features.stanfordTreeDocumentFunction])
-		functionCollection.getValues(documentbase.documents, features.tokensDocumentFunction)
-		functionCollection.getValues(documentbase.documents, features.posDocumentFunction)
-		functionCollection.getValues(documentbase.documents, features.stDocumentDocumentFunction)
+		functionCollection.getValues(docs, features.stanfordTreeDocumentFunction)
+		functionCollection.moveToMemory(docs, [features.stanfordTreeDocumentFunction])
+		functionCollection.getValues(docs, features.tokensDocumentFunction)
+		functionCollection.getValues(docs, features.posDocumentFunction)
+		functionCollection.getValues(docs, features.stDocumentDocumentFunction)
+		for doc in docs:
+			functionCollection.forgetDocument(doc)
 	print("prepared %d documents" % len(documentbase.documents))
 if __name__ == '__main__':
 	import sys
