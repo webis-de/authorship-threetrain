@@ -75,6 +75,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 #if no initial classifiers are given, they are learned from the trainingBase.
 	if None in trainingBase.authors:
 		raise Exception("Training Base should be labelled.")
+	print("unlabelled authors: ",unlabelledBase.authors,"; test authors: ", testBase.authors)
 	labelled1 = trainingBase
 	labelled2 = trainingBase
 	labelled3 = trainingBase
@@ -304,9 +305,9 @@ def mainfunc():
 	'''
 	trainBase = features.documentbase(trainDocuments)
 	trainBase.functionCollection = imdb62.functionCollection
-	unlabelledBase = features.documentbase([features.document(doc.text) for doc in unlabelledDocuments])
+	unlabelledBase = features.documentbase(unlabelledDocuments)#[features.document(doc.text) for doc in unlabelledDocuments])
 	unlabelledBase.functionCollection = imdb62.functionCollection
-	testBase = features.documentbase([features.document(doc.text) for doc in testDocuments])
+	testBase = features.documentbase(testDocuments)#[features.document(doc.text) for doc in testDocuments])
 	testBase.functionCollection = imdb62.functionCollection
 	view1 = features.characterView([3])
 	view1.functionCollection = imdb62.functionCollection
