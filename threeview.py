@@ -245,9 +245,9 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 			balanced1,balanced2,balanced3 = parallelGroup.get_results()
 		else:
 			balanced1,balanced2,balanced3 = labelled1,labelled2,labelled3
-		classifier1.clearCache()
-		classifier2.clearCache()
-		classifier3.clearCache()
+		classifier1.free()
+		classifier2.free()
+		classifier3.free()
 		classifier1=None
 		classifier2=None
 		classifier3=None

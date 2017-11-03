@@ -132,6 +132,9 @@ class documentFunction:
 			return self.functionCollection.getFunction(functionClass,*args)
 		else:
 			return functionClass(*args)
+	def removeFromFunctionCollection(self):
+		if hasattr(self,'functionCollection'):
+			self.functionCollection.forgetInstance(self)
 class derivedDocumentFunction(documentFunction):
 	#does not only look at the text but also at the outcome of another document function
 	__slots__=['predecessorFunctionClass','predecessorFunction']
@@ -171,6 +174,14 @@ class documentFunctionCollection:
 		return self.getFunction(functionClass, *kwds).getValue(document)
 	def getValues(self,documents,functionClass,*kwds):
 		return self.getFunction(functionClass, *kwds).getValuev(documents)
+	def forgetFunction(self,functionClass,*kwds):
+		key = (functionClass,kwds)
+		del self.instances[key]
+	def forgetInstance(self,instance):
+		for key,value in self.instances.items():
+			if value is instance:
+				del self.instances[key]
+				return
 	def free(self):
 		for fun in self.instances.values():
 			fun.clearCache()
@@ -237,6 +248,11 @@ class combinedFeature(feature):
 			for v,r in zip(vals,result):
 				r += v
 		return result
+	def removeFromFunctionCollection(self,subfeaturesToo=True):
+		if subfeaturesToo:
+			for feat in self.subfeatures:
+				feat.removeFromFunctionCollection()
+		super().removeFromFunctionCollection()
 class derivedFeature(feature,derivedDocumentFunction):
 	__slots__=[]
 	pass
@@ -575,6 +591,8 @@ class mlModel:
 		# gets a list of elements of V and returns a list of same lengths of elements in L.
 		# returns an element with maximal probability
 		return [countermax(p) for p in self.getProbabilities(vectors)]
+	def free(self):
+		pass # may be inherited to be reliably called when not needed any more.
 	# derived classes should further make sure they are picklable (i.e. implement __getstate__ and __setstate__)
 class learningMachine:
 	# a learning maching takes a list of tuples (v,l) where v is an element of an abstract feature space F and
@@ -636,6 +654,10 @@ class documentClassifier(documentFunction):
 		self.feature = functionCollection.getFunction(*state[0])
 		self.model = state[1]
 		super().__init__()
+	def free(self):
+		self.clearCache()
+		self.model.free()
+		self.feature.removeFromFunctionCollection()
 def loadClassifier(state,functionCollection):
 	result = documentClassifier.__new__(documentClassifier)
 	result.loads(state,functionCollection)
