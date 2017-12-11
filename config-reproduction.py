@@ -48,7 +48,8 @@ configuration = {
 'featurelimit_max_word_unigrams': None, #similar. Defauls to None
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
-'debug_memory': True # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
+'debug_memory': True, # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
+'stripOMNI': False
 }
 glob = globals()
 for (key,value) in configuration.items():

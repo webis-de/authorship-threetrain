@@ -6,6 +6,7 @@ from werkzeug import cached_property
 import pickle
 import easyparallel
 from math import ceil
+from strip_omni import stripOMNI
 class stanfordTree:
 	__slots__ = ['label','data','parent','rangeStart','rangeEnd','children']
 	def __init__(self, label, parent=None, position=None):
@@ -95,6 +96,7 @@ def parseTextsParallel(texts,num_kernels=4):
 def parseText(texts):
 	if texts == []:
 		return []
+	texts = [stripOMNI(t) for t in texts]
 	#NB the stanford parser is VERY BROKEN for it cannot, in combination with the crucial virt-sandbox, properly read data from stdin
 	#UNLESS I, personally, by my own hands, type them into the terminal.
 	handles=[]

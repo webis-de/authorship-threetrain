@@ -5,13 +5,13 @@ configuration = {
 'do_fake' : False, # set to true to insert only truely labelled documents
 'use_small_cache':False, # set to true to use a small cache. Restrictions: num_authors <= 3, num_training + num_unlabelled + num_test <= 10
 		# reduces startup time, useful to search errors
-'num_authors': 10, # number of authors to include into training
-'num_training': 7, # training documents / author
-'num_unlabelled':200 , # unlabelled documents / author
-'num_test': 20, # test documents / author
-'training_unlabelled': 1, # number of unlabelled documents to examine before re-computing classifiers
-'training_iterations': 10, # number of training iterations (=number of re-trained classifiers) 
-'num_threads_mining': 4, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
+'num_authors': 62, # number of authors to include into training
+'num_training': 10, # training documents / author
+'num_unlabelled':790 , # unlabelled documents / author
+'num_test': 200, # test documents / author
+'training_unlabelled': 20, # number of unlabelled documents to examine before re-computing classifiers
+'training_iterations': 40, # number of training iterations (=number of re-trained classifiers) 
+'num_threads_mining': 1, # number of threads involved for the mining algorithm. A number > 1 significantly increases the memory requirements
 'num_threads_classifying': 4, # number of threads involved for the LR classifications. Irrelevant to scikit (apparently)
 'normalize_features': False, # divides the frequency of a token in a document by the total number of tokens in this document,
 			  # similarly the frequency of a character or pos n-gram by the total number of tokens in this document
@@ -49,7 +49,8 @@ configuration = {
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
 'debug_memory': False, # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
-'tira_base_directory': '.' #change to '/media/training-datasets/authorship-attribution/' when running on actual TIRA-VM.
+'tira_base_directory': '.', #change to '/media/training-datasets/authorship-attribution/' when running on actual TIRA-VM.
+'stripOMNI': True
 }
 glob = globals()
 for (key,value) in configuration.items():
