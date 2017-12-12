@@ -97,6 +97,7 @@ def parseText(texts):
 	if texts == []:
 		return []
 	texts = [stripOMNI(t) for t in texts]
+	print("got %d texts" % len(texts))
 	#NB the stanford parser is VERY BROKEN for it cannot, in combination with the crucial virt-sandbox, properly read data from stdin
 	#UNLESS I, personally, by my own hands, type them into the terminal.
 	handles=[]
@@ -109,7 +110,7 @@ def parseText(texts):
 	indexfile.write(bytearray("\n".join(handle.name for handle in handles)+"\n",encoding='utf8'))
 	indexfile.flush()
 	command='''/usr/bin/virt-sandbox -- /usr/bin/xargs -a %s -n 10 /usr/bin/java -Xmx3g -mx3g -cp %s/stanford-parser-full-2017-06-09/*: edu.stanford.nlp.parser.lexparser.LexicalizedParser -outputFormat penn -outputFormatOptions includePunctuationDependencies -maxLength 250 edu/stanford/nlp/models/lexparser/englishPCFG.ser.gz'''
-	#NB this is not partable if sys.path[0] or indexfile.name contains a space.
+	#NB this is not portable if sys.path[0] or indexfile.name contains a space.
 	#print(command % (indexfile.name,sys.path[0]))
 	mypath=os.path.dirname(os.path.abspath(__file__))
 	#print(command % (indexfile.name,mypath))
@@ -121,17 +122,20 @@ def parseText(texts):
 	#		stdout=subprocess.PIPE, universal_newlines=True)
 	tokens = None
 	pos=None
-	trees=None
-	results=[]
-	position=0
+	trees=[]
+	results=[trees]
 	output=proc.stdout
 	print(output)
-	nextParsing = output.find('Parsing file:')
+	position = output.find('Parsing file:')
+	nextParsing = output.find('Parsing file:',position+1)
 	while True:
 		position = output.find('(ROOT', position)
 		if position == -1:
-			break
-		if trees is None or position > nextParsing and nextParsing != -1:
+			if nextParsing == -1:
+				break
+			results.append([])
+			nextParsing = output.find('Parsing file:', nextParsing+1)
+		if position > nextParsing and nextParsing != -1:
 			#tokens=[]
 			#pos=[]
 			trees=[]
@@ -166,7 +170,7 @@ def parseText(texts):
 				tree=tree.parent
 	return results
 if __name__=="__main__":
-	results=parseText(['Is this a hash?! Oh, #2 is one. For $60 dollars, 60$ can be given! Would they "quote \'inside\'"? Or; if anything goes: Then this (or this?).'])
+	results=parseText(['','Is this a hash?! Oh, #2 is one. For $60 dollars, 60$ can be given! Would they "quote \'inside\'"? Or; if anything goes: Then this (or this?).',''])
 	dump = pickle.dumps(results)
 	print(repr(results))
 	print(dump)
