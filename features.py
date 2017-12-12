@@ -52,6 +52,10 @@ class document:
 	def identifier(self):
 		return document_identifier_hashfun(self.text.encode('utf-8')).digest()
 		'''
+	def __getstate__(self):
+		return (self.text,self.author)
+	def __setstate__(self,state):
+		self.__init__(*state)
 class documentFunction:
 	__slots__=['cachedValues','functionCollection']
 	def __init__(self):
