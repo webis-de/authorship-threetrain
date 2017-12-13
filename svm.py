@@ -1,9 +1,16 @@
 import features
 from collections import Counter
 from sklearn.svm import SVC
+import math
 class svmModel(features.mlModel):
 	__slots__=['occuring_labels', 'model']
 	def __init__(self,labels,features):
+		for feature in features:
+			if all(math.isnan(f) for f in feature):
+				for i in range(len(feature)):
+					feature[i]=0
+			if any(math.isnan(f) for f in feature):
+				raise Exception("feature contains SOME nans!")
 		self.occuring_labels = sorted(set(labels))
 		self.model = SVC(probability=True)
 		self.model.fit(features,labels)

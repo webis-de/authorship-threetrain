@@ -94,6 +94,7 @@ class documentFunction:
 				value = missingValues[missingIndex]
 				missingIndex += 1
 				result.append(value)
+				#print("cache value %s under key %s" % (repr(value),repr(key)))
 				self.cachedValues[key]=value
 		return result
 	# one of mapping or mappingv must be implemented.
