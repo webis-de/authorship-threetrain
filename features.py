@@ -11,6 +11,7 @@ import diskdict
 import hashlib
 import pickle
 import os.path
+import math
 
 #we agree on the following terminology:
 #	- a document is a natural language text
@@ -345,7 +346,6 @@ class view:
 		return self.getFunction(functionClass,*kwds).getValuev(documents)
 	def createClassifier(self,trainingDocbase,ml):
 		return documentClassifier(trainingDocbase,self.getFeature(trainingDocbase),ml)
-
 # now to the concrete stuff
 class stanfordTreeDocumentFunction(documentFunction):
 	__slots__=[]
@@ -630,6 +630,12 @@ class documentClassifier(documentFunction):
 		vectors = feature.getValuev(trainingDocbase.documents)
 		print("start classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		#self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,authors,vectors)
+		for vec in vectors:
+			if all(math.isnan(x) for x in vec):
+				for i in range(len(vec)):
+					vec[i]=0
+			if any(math.isnan(x) for x in vec):
+				raise Exception("vector contains SOME nans!")
 		self.model = ml.getModel(authors,vectors)
 		print("returned from classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		if hasattr(feature,'functionCollection'):
