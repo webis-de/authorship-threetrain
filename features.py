@@ -86,14 +86,16 @@ class documentFunction:
 		missingValues = self.mappingv([documents[i] for i in missingIndices]) if missingIndices else []
 		if len(missingIndices) != len(missingValues):
 			raise Exception("Called mappingv with %u documents, got %u values." % (len(documents), len(missingValues)))
-		missingIndex=0
 		result = []
+		cached_keys=[key for (key,avail) in zip(keys,available) if avail ]
+		cached_values = iter(self.cachedValues.fetchMany(cached_keys)) if isinstance(self.cachedValues,diskdict.DiskDict) else \
+					(self.cachedValues[key] for key in cached_keys)
+		missingValues = iter(missingValues)
 		for avail,key,doc in zip(available,keys,documents):
 			if avail:
-				result.append(self.cachedValues[key])
+				result.append(next(cached_values))
 			else:
-				value = missingValues[missingIndex]
-				missingIndex += 1
+				value = next(missingValues)
 				result.append(value)
 				#print("cache value %s under key %s" % (repr(value),repr(key)))
 				self.cachedValues[key]=value
@@ -491,8 +493,8 @@ class characterView(view):
 			function = self.getFunction(characterNGramCounterDocumentFunction,n)
 			if limit is None:
 				values=set()
-				for doc in docbase.documents:
-					values = values.union(set(function.getValue(doc)))
+				for vals in function.getValuev(docbase.documents):
+					values = values.union(set(vals))
 				features.append((characterNGramFeature,n,tuple(values)))
 			else:
 				values = Counter()
@@ -509,8 +511,10 @@ class lexicalView(view):
 		limit = config.featurelimit_max_word_unigrams
 		if limit is None:
 			values=set()
-			for doc in docbase.documents:
-				values = values.union(set(function.getValue(doc)))
+			#for doc in docbase.documents:#this is not perfect
+			#	values = values.union(set(function.getValue(doc)))
+			for vals in function.getValuev(docbase.documents):
+				values = values.union(set(vals))
 			return self.getFunction(wordUnigramFeature,tuple(values))
 		else:
 			values=Counter()
@@ -538,8 +542,8 @@ class syntacticView(view):
 			limit = config.featurelimit_max_pos_ngrams[n-1]
 			if limit is None:
 				values = set()
-				for doc in docbase.documents:
-					values = values.union(set(function.getValue(doc)))
+				for vals in function.getValuev(docbase.documents):
+					values = values.union(set(vals))
 				features.append((posNGramFeature,n,tuple(values)))
 			else:
 				values = Counter()
@@ -631,11 +635,9 @@ class documentClassifier(documentFunction):
 		print("start classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		#self.regression = easyparallel.callWorkerFunction(regression.multiclassLogit,authors,vectors)
 		for vec in vectors:
-			if all(math.isnan(x) for x in vec):
-				for i in range(len(vec)):
+			for i,x in enumerate(vec):
+				if math.isnan(x):
 					vec[i]=0
-			if any(math.isnan(x) for x in vec):
-				raise Exception("vector contains SOME nans!")
 		self.model = ml.getModel(authors,vectors)
 		print("returned from classifying with %d vectors and %d features" % (len(vectors),feature.vectorLength()))
 		if hasattr(feature,'functionCollection'):

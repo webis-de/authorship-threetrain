@@ -40,13 +40,6 @@ class DiskDict(MutableMapping):
 		self.cursor.execute('DELETE FROM `%s`' % self.requested_name)
 		self.connection.commit()
 		return result
-	def fetchMany(self,keys):
-		keys = [k for k in keys if k in self._keys]
-		pickled = [pickle.dumps(key) for key in keys]
-		hashes = [hashfunc(p) for p in pickled]
-		return self._fetchMany(pickled,hashes)
-	def values(self):
-		return self.fetchMany(self._keys)
 	def moveToMemory(self,keys):
 		keys = [k for k in keys if k in self._keys]
 		pickled = [pickle.dumps(key) for key in keys]
@@ -88,6 +81,27 @@ class DiskDict(MutableMapping):
 				return mem[pickled]
 		self.cursor.execute('SELECT `py_value` FROM `%s` WHERE `py_hash` == ? AND `py_key` == ?' % self.tablename, (h,pickled))
 		return pickle.loads(self.cursor.fetchone()[0])
+	def fetchMany(self,keys):
+		#keys = [k for k in keys if k in self._keys]
+		if any(not k in self._keys for k in keys):
+			raise Exception("Some keys are not known")
+		pickled = [pickle.dumps(key) for key in keys]
+		hashes = [hashfunc(p) for p in pickled]
+		is_cached = [h in self.memory_cache and p in self.memory_cache[h] for (h,p) in zip(hashes,pickled)]
+		if all(is_cached):
+			return [self.memory_cache[h][p] for (h,p) in zip(hashes,pickled)]
+		remaining = iter(self._fetchMany([p for (p,cached) in zip(pickled,is_cached) if not cached],\
+					    [h for (h,cached) in zip(hashes,is_cached) if not cached]))
+		result=[]
+		for i,cached in enumerate(is_cached):
+			if cached:
+				result.append(self.memory_cache[hashes[i]][pickled[i]])
+			else:
+				result.append(next(remaining))
+		return result
+	def values(self):
+		return self.fetchMany(self._keys)
+
 	def __setitem__(self,key,value):
 		pickled = pickle.dumps(key)
 		h=hashfunc(pickled)
