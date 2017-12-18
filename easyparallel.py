@@ -11,9 +11,14 @@ If it is a class function, the instance it is called with is pickled to.
 import threading
 import multiprocessing
 import os
+DEBUG=False
+def debugInfo(msg):
+	global DEBUG
+	if DEBUG:
+		print("*** easyparallel ***: "+str(msg))
 class ParallelismGroup:
-	__slots__ = ['lock','threads']
-	def __init__(self,num_kernels):
+	__slots__ = ['lock','threads']#
+	def __init__(self):#,num_kernels
 		#self.num_kernels = num_kernels
 		#self.pool = None
 		self.lock = threading.Lock()
@@ -21,7 +26,7 @@ class ParallelismGroup:
 	def add_branch(self,fun,*args,**kwargs):
 		#if self.pool is None:
 		#	self.pool = multiprocessing.Pool(self.num_kernels)
-		self.threads.append(OuterThread(fun,args,kwargs))#,self.lock
+		self.threads.append(OuterThread(fun,args,kwargs,self.lock))#
 	def map_branches(self,fun,args):
 		for ar in args:
 			self.add_branch(fun,ar)
@@ -30,8 +35,10 @@ class ParallelismGroup:
 		return self.get_results()
 	def get_results(self):
 		#BLOCKS until all created branches return. Returns the results of the branched function calls in order of calling add_branch (not thread-safe)
+		debugInfo('collecting results...')
 		for th in self.threads:
 			th.join()
+		debugInfo('all threads joined')
 		#self.pool.close()
 		for th in self.threads:
 			if th.excepted:
@@ -42,26 +49,32 @@ class ParallelismGroup:
 		return result
 class OuterThread(threading.Thread):
 	__slots__ = ['fun','args','kwargs','result','excepted','exception','group']#,'pool','lock','local'
-	def __init__(self,fun,args,kwargs):#,lock,pool
+	def __init__(self,fun,args,kwargs,lock):#,pool
 		self.fun = fun
 		self.args = args
 		self.kwargs = kwargs
 		#self.group=group
-		#self.lock = lock
+		self.lock = lock
 		#self.pool = pool
 		#self.local = threading.local()
 		super().__init__()
 		self.start()
+		debugInfo('started thread %s' % self)
 	def run(self):
+		debugInfo('run thread %s' % self)
 		self.excepted=False
 		try:
 			self.result = self.fun(*self.args,**self.kwargs)
+			debugInfo('thread %s gave result' % self)
 		except Exception as e:
 			self.excepted=True
 			self.exception = e
+			debugInfo('thread %s gave excepted' % self)
+ALL_PROCESSES=[]
 class OuterProcess(multiprocessing.Process):
 	__slots__ = ['fun','args','kwargs','queue']
 	def __init__(self,fun,args,kwargs):
+		ALL_PROCESSES.append(self)
 		self.fun=fun
 		self.args=args
 		self.kwargs=kwargs
@@ -69,16 +82,23 @@ class OuterProcess(multiprocessing.Process):
 		self.queue=multiprocessing.Queue()
 		super().__init__()
 		self.start()
+		debugInfo('started process %s from %s' % (self,multiprocessing.current_process()))
 	def run(self):
+		debugInfo('run process %s' % self)
 		ret=None
 		try:
 			ret={'result':self.fun(*self.args,**self.kwargs),'excepted':False}
+			debugInfo('process %s gave result' % self)
 		except Exception as e:
 			ret= {'excepted':True,'exception':e}
+			debugInfo('process %s excepted' % self)
 		self.queue.put(ret)
 	def fetchResult(self):
+		debugInfo('fetch result for process %s' % self)
 		self.join()
+		debugInfo('joined process %s' % self)
 		read=self.queue.get()
+		debugInfo('got result for process %s' % self)
 		if read['excepted']:
 			raise read['exception']
 		return read['result']
@@ -88,7 +108,8 @@ def callWorkerFunction(fun,*args,**kwargs):
 		#with thread.lock:
 		#	result=thread.pool.apply_async(fun,args,kwargs)
 		#return result.get()
-		proc=OuterProcess(fun,args,kwargs)
+		with thread.lock:
+			proc=OuterProcess(fun,args,kwargs)
 		return proc.fetchResult()
 	return fun(*args,**kwargs)
 if __name__ == '__main__':
@@ -97,8 +118,8 @@ if __name__ == '__main__':
 		return num
 	def complicatedPrint(message):
 		print("goint to print ",message," ...")
-		os.system('sleep 4')
+		os.system('sleep 0.4')
 		print(message)
-	group = ParallelismGroup(4)
-	print(group.map(performance,range(12)))
-	print([performance(j) for j in range(20,24)])
+	group = ParallelismGroup()
+	print(group.map(performance,range(2)))
+	#print([performance(j) for j in range(20,24)])
