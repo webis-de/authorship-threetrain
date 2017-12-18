@@ -88,7 +88,7 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 	extra_false1=0
 	extra_false2=0
 	extra_false3=0
-	parallelGroup = easyparallel.ParallelismGroup(3)
+	parallelGroup = easyparallel.ParallelismGroup()
 	functionCollection = trainingBase.functionCollection if hasattr(trainingBase,'functionCollection') else None
 	#@profile
 	def prepareDocuments(docs):

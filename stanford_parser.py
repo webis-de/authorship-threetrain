@@ -81,7 +81,7 @@ def readTreeFromStream(stream,parent=None):
 		readTreeFromStream(stream,result)
 	return result
 def parseTextsParallel(texts,num_kernels=4):
-	group=easyparallel.ParallelismGroup(num_kernels)
+	group=easyparallel.ParallelismGroup()
 	num_texts = len(texts)
 	texts_per_chunk = ceil(float(num_texts)/float(num_kernels))
 	index=0

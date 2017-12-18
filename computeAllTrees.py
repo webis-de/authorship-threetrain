@@ -1,7 +1,7 @@
 import imdb62
 import easyparallel
 num_threads = 4 # set to 1 if you use virt-sandbox
-group = easyparallel.ParallelismGroup(num_threads)
+group = easyparallel.ParallelismGroup()
 chunksize=40
 for pos in range(0,len(imdb62.documentbase.documents),chunksize*num_threads):
 	for i in range(num_threads):
