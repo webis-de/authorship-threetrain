@@ -5,6 +5,7 @@ import pickle
 import tempfile
 import os
 import features
+import easyparallel
 class multiclassLogitSklearn(features.mlModel):
 	__slots__ = ['occuring_labels','label_translation','factors','model']
 	def __init__(self,labels,features):
@@ -19,6 +20,7 @@ class multiclassLogitSklearn(features.mlModel):
 				class_weight='balanced' if config.scikit_balance_classes else None,n_jobs=config.num_threads_classifying)
 		self.model.fit(features,[self.label_translation[l] for l in labels])
 		#print("train scikit: ",self.features,labels)
+	@easyparallel.worker
 	def getProbabilities(self,vectors):
 		vectors = [[ v*factor for (v,factor) in zip(vector,self.factors) ] for vector in vectors]
 		return [Counter({label: prob for (label,prob) in zip(self.occuring_labels,probs)}) for probs in self.model.predict_proba(vectors)]
@@ -107,6 +109,7 @@ class multiclassLogitCompare(features.mlModel):
 		return res2
 #multiclassLogit = multiclassLogitCompare
 if __name__ == '__main__':
+	group=easyparallel.ParallelismGroup()
 	labels = ['a','b','a','b','c','c','d','d']
 	features = [ [0,1], [1,0],[0,2],[.9,.1],[-.1,-1],[.1,-2],[-1,.1],[-1.5,.2]]
 	testFeatures = [ [0.1,0.9], [1.1,-0.1],[-.9,1.1]]
@@ -115,7 +118,11 @@ if __name__ == '__main__':
 	model = multiclassLogitLiblinear(labels,features)
 	print(model.getProbabilities(testFeatures))
 	'''
-	model = multiclassLogit(labels,features)
+	model = multiclassLogit.getModel(labels,features)
+	#print(group.map(lambda f:model.getProbabilities(f),[testFeatures]))
+	print(multiclassLogitSklearn.getProbabilities)
+	print(model.getProbabilities)
+	print(multiclassLogitSklearn.getProbabilities(model,testFeatures))
 	print(model.getProbabilities(testFeatures))
 	pickled = pickle.dumps(model)
 	print(pickled)

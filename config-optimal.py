@@ -7,7 +7,7 @@ configuration = {
 		# reduces startup time, useful to search errors
 'num_authors': 62, # number of authors to include into training
 'num_training': 10, # training documents / author
-'num_unlabelled':790 , # unlabelled documents / author
+'num_unlabelled':700 , # unlabelled documents / author
 'num_test': 200, # test documents / author
 'training_unlabelled': 20, # number of unlabelled documents to examine before re-computing classifiers
 'training_iterations': 40, # number of training iterations (=number of re-trained classifiers) 

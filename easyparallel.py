@@ -11,7 +11,7 @@ If it is a class function, the instance it is called with is pickled to.
 import threading
 import multiprocessing
 import os
-DEBUG=False
+DEBUG=True
 def debugInfo(msg):
 	global DEBUG
 	if DEBUG:
@@ -95,14 +95,16 @@ class OuterProcess(multiprocessing.Process):
 		self.queue.put(ret)
 	def fetchResult(self):
 		debugInfo('fetch result for process %s' % self)
-		self.join()
-		debugInfo('joined process %s' % self)
+		#self.join()
+		#debugInfo('joined process %s' % self)
 		read=self.queue.get()
 		debugInfo('got result for process %s' % self)
 		if read['excepted']:
 			raise read['exception']
 		return read['result']
 def callWorkerFunction(fun,*args,**kwargs):
+	if DEBUG:
+		print("callWorkerFunction",fun,args,kwargs)
 	thread = threading.current_thread()
 	if isinstance(thread,OuterThread):
 		#with thread.lock:
@@ -112,6 +114,21 @@ def callWorkerFunction(fun,*args,**kwargs):
 			proc=OuterProcess(fun,args,kwargs)
 		return proc.fetchResult()
 	return fun(*args,**kwargs)
+'''
+class worker(object):
+	__slots__=['f']
+	def __init__(self,*args):
+		print("initiated worker for ",args)
+		self.f=args[0]
+	def __call__(self,*args,**kwargs):
+		if DEBUG:
+			print('__call__ed ',self,' with ',args,kwargs)
+		return callWorkerFunction(self.f,*args,**kwargs)
+'''
+def worker(f):
+	def result(*args,**kwargs):
+		return callWorkerFunction(f,*args,**kwargs)
+	return result
 if __name__ == '__main__':
 	def performance(num):
 		callWorkerFunction(complicatedPrint,'hello %d' % num)
