@@ -26,7 +26,8 @@ class ParallelismGroup:
 	def add_branch(self,fun,*args,**kwargs):
 		#if self.pool is None:
 		#	self.pool = multiprocessing.Pool(self.num_kernels)
-		self.threads.append(OuterThread(fun,args,kwargs,self.lock))#
+		with self.lock:
+			self.threads.append(OuterThread(fun,args,kwargs,self.lock))#
 	def map_branches(self,fun,args):
 		for ar in args:
 			self.add_branch(fun,ar)
@@ -35,18 +36,19 @@ class ParallelismGroup:
 		return self.get_results()
 	def get_results(self):
 		#BLOCKS until all created branches return. Returns the results of the branched function calls in order of calling add_branch (not thread-safe)
-		debugInfo('collecting results...')
-		for th in self.threads:
-			th.join()
-		debugInfo('all threads joined')
-		#self.pool.close()
-		for th in self.threads:
-			if th.excepted:
-				raise th.exception
-		result = [th.result for th in self.threads]
-		self.threads = []
-		#self.pool = None
-		return result
+		with self.lock:
+			debugInfo('collecting results...')
+			for th in self.threads:
+				th.join()
+			debugInfo('all threads joined')
+			#self.pool.close()
+			for th in self.threads:
+				if th.excepted:
+					raise th.exception
+			result = [th.result for th in self.threads]
+			self.threads = []
+			#self.pool = None
+			return result
 class OuterThread(threading.Thread):
 	__slots__ = ['fun','args','kwargs','result','excepted','exception','group']#,'pool','lock','local'
 	def __init__(self,fun,args,kwargs,lock):#,pool
