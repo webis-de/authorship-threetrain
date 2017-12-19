@@ -17,16 +17,17 @@ def debugInfo(msg):
 	if DEBUG:
 		print("*** easyparallel ***: "+str(msg))
 class ParallelismGroup:
-	__slots__ = ['lock','threads']#
+	__slots__ = ['lock','controllock','threads']#
 	def __init__(self):#,num_kernels
 		#self.num_kernels = num_kernels
 		#self.pool = None
 		self.lock = threading.Lock()
+		self.controllock = threading.Lock()
 		self.threads = []
 	def add_branch(self,fun,*args,**kwargs):
 		#if self.pool is None:
 		#	self.pool = multiprocessing.Pool(self.num_kernels)
-		with self.lock:
+		with self.controllock:
 			self.threads.append(OuterThread(fun,args,kwargs,self.lock))#
 	def map_branches(self,fun,args):
 		for ar in args:
@@ -36,7 +37,7 @@ class ParallelismGroup:
 		return self.get_results()
 	def get_results(self):
 		#BLOCKS until all created branches return. Returns the results of the branched function calls in order of calling add_branch (not thread-safe)
-		with self.lock:
+		with self.controllock:
 			debugInfo('collecting results...')
 			for th in self.threads:
 				th.join()
