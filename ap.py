@@ -83,7 +83,9 @@ def genCrossvalIndices(N,k):
 		for i in sample:
 			indices.remove(i)
 	return result
+random.seed(1)
 crossvalIndices = [genCrossvalIndices(len(docs),5) for docs in selected_author_documents]
+random.seed(config.random_seed)
 crossvalDocuments = [ [ [docs[i] for i in indices] for indices in cvindices] for (docs,cvindices) in zip(selected_author_documents,crossvalIndices)]
 def getTrainingDocuments(i):
 	result=[]
