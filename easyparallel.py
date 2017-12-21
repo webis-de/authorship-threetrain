@@ -109,8 +109,8 @@ class OuterProcess(multiprocessing.Process):
 			raise read['exception']
 		return read['result']
 def callWorkerFunction(fun,*args,**kwargs):
-	if DEBUG:
-		print("callWorkerFunction",fun,args,kwargs)
+	#if DEBUG:
+	#	print("callWorkerFunction",fun,args,kwargs)
 	thread = threading.current_thread()
 	if isinstance(thread,OuterThread):
 		#with thread.lock:

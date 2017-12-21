@@ -95,7 +95,9 @@ def getTrainingDocuments(i):
 def trainModel(i):
 	trainingBase = features.documentbase(getTrainingDocuments(i))
 	trainingBase.functionCollection=functionCollection
-	classifier=features.kimView().createClassifier(trainingBase, svm.SVM)
+	view=features.kimView()
+	view.functionCollection = functionCollection
+	classifier=view.createClassifier(trainingBase, svm.SVM)
 	filename="ap-selected-model-%d-%d" % (len(selected_author_names),i)
 	with open(filename,"wb") as f:
 		f.write(classifier.dumps())

@@ -1085,6 +1085,7 @@ _Bool st_indistinguishablePatterns(const st_patternEmbedding* embedding1, const 
 _Bool st_doMiningIterations(st_miningState* state, unsigned int num_iterations) {
 	//returns true if these iterations were sufficient or false if there are candidates remaining
 	st_validateState(state);
+	unsigned int iter=0;
 	while (state->candidates->length > 0 && (num_iterations == -1 || num_iterations-- > 0)) {
 		//st_listedPattern* cand;
 		//for (cand = state->candidates->first; cand != NULL; cand = cand->succ) st_printTree(cand->pattern,0);
@@ -1092,6 +1093,18 @@ _Bool st_doMiningIterations(st_miningState* state, unsigned int num_iterations) 
 		st_tree* pattern=entry->pattern;
 		//printf("consider this candidate pattern:\n");st_printTree(pattern,0);
 		st_patternEmbedding* embedding=entry->embedding;
+		if (num_iterations == -1) {
+			printf(".");
+			if (++iter == 100) {
+				printf("\n");
+				double entropy, estimate;
+				entropy=st_econditionalEntropy(state->base, state->n, &estimate, embedding);
+				printf("Remaining %d candidates, latest candidate has entropy %f (estimated %f).\n",
+										state->candidates->length, entropy, estimate);
+				st_printTree(pattern,0);
+				iter=0;
+			}
+		}
 		st_validateEmbedding(state->base, pattern, embedding);
 		unsigned int num_embedded_edges = entry->num_embedded_edges;
 		st_patternListRemoveFirst(state->candidates);
