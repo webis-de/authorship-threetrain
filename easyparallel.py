@@ -11,6 +11,7 @@ If it is a class function, the instance it is called with is pickled to.
 import threading
 import multiprocessing
 import os
+import sys
 DEBUG=True
 def debugInfo(msg):
 	global DEBUG
@@ -89,7 +90,11 @@ class OuterProcess(multiprocessing.Process):
 		super().__init__()
 		self.start()
 		debugInfo('started process %s from %s' % (self,multiprocessing.current_process()))
+		#if self.queue.get() is not True:
+		#	raise Exception("Error starting process")
 	def run(self):
+		#self.queue.put(True)
+		sys.stdout=self
 		debugInfo('run process %s' % self)
 		ret=None
 		try:
@@ -103,11 +108,18 @@ class OuterProcess(multiprocessing.Process):
 		debugInfo('fetch result for process %s' % self)
 		#self.join()
 		#debugInfo('joined process %s' % self)
-		read=self.queue.get()
+		while True:
+			read=self.queue.get()
+			if 'stdout' in read:
+				print(read['stdout'],end='')
+			else:
+				break
 		debugInfo('got result for process %s' % self)
 		if read['excepted']:
 			raise read['exception']
 		return read['result']
+	def write(self,text):
+		self.queue.put({'stdout': text})
 def callWorkerFunction(fun,*args,**kwargs):
 	#if DEBUG:
 	#	print("callWorkerFunction",fun,args,kwargs)
@@ -118,6 +130,7 @@ def callWorkerFunction(fun,*args,**kwargs):
 		#return result.get()
 		with thread.lock:
 			proc=OuterProcess(fun,args,kwargs)
+			debugInfo("done starting %s" % proc)
 		return proc.fetchResult()
 	return fun(*args,**kwargs)
 '''

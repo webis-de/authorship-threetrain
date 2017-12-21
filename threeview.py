@@ -252,9 +252,16 @@ def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_ite
 		classifier2=None
 		classifier3=None
 		print("added documents (true/false): %d/%d   %d/%d   %d/%d" % (extra_true1,extra_false1,extra_true2,extra_false2,extra_true3,extra_false3))
+	'''
 	classifier1 = view1.createClassifier(balanced1,regression.multiclassLogit)
 	classifier2 = view2.createClassifier(balanced2,regression.multiclassLogit)
 	classifier3 = view3.createClassifier(balanced3,regression.multiclassLogit)
+	'''
+	parallelGroup.add_branch(trainAndPredict,view1,balanced1,testBase.documents)
+	parallelGroup.add_branch(trainAndPredict,view2,balanced2,testBase.documents)
+	parallelGroup.add_branch(trainAndPredict,view3,balanced3,testBase.documents)
+	parallelGroup_results = parallelGroup.get_results()
+	classifier1,classifier2,classifier3 = (r[0] for r in parallelGroup_results)
 	pred = getAccumulatedPrediction(testBase,classifier1,classifier2,classifier3)
 	if verificationBase.documents:
 		correct = len([None for (pred,doc) in zip(pred,testBase.documents) if pred == doc.author])
