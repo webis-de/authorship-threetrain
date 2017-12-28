@@ -5,6 +5,7 @@ import prepare_documents
 import random
 import svm
 import pickle
+import config
 functionCollection = features.documentFunctionCollection()
 mypath=os.path.dirname(os.path.abspath(__file__))
 ap_path=mypath+'/ap/'
@@ -114,6 +115,20 @@ def getModel(i):
 		return readModel(i)
 	except FileNotFoundError:
 		return trainModel(i)
+def runCrossvalidation():
+	print(",".join(selected_author_names)+",total")
+	for i in range(5):
+		model=readModel(i)
+		testDocuments=[]
+		for authorDocs in crossvalDocuments:
+			testDocuments += authDocs[i]
+		prediction=model.predict(testDocuments)
+		numDocuments=[len(authDocs[i]) for authDocs in crossvalDocuments]
+		numCorrect=[0 for _ in selected_author_names]
+		for doc,pred in zip(testDocuments,prediction):
+			if doc.author == pred:
+				numCorrect[selected_author_names.index(pred)] += 1
+		print(",".join("%d/%d" % (c,d) for (c,d) in zip(numCorrect,numDocuments))+"%d/%d" % (sum(numCorrect),sum(numDocuments)))
 if __name__ == '__main__':
 	for i in range(5):
 		getModel(i)
