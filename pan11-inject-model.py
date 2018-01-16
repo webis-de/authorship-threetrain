@@ -3,6 +3,7 @@ import features
 import tira
 from c_syntax_tree import syntax_tree
 import svm
+import math
 def esyntax_tree(label,children):
 	result=syntax_tree(label,children)
 	result.setExtendable()
@@ -17,7 +18,12 @@ tiraInterface.prepareWorkingDirectory()
 training_dataset,unknown_dataset=tiraInterface.loadCorpus()
 with tiraInterface:
 	treeFeature=tiraInterface.functionCollection.getFunction(features.syntaxTreeFrequencyFeature,tuple(recovered_trees))
+	treeFeature.moveToMemory(training_dataset.documents)
+#	values=treeFeature.getValuev(training_dataset.documents)
+#	for i,v in enumerate(values):
+#		if any(math.isnan(x) for x in v):
+#			print("this document: '%s' has vector %s" % (training_dataset.documents[i].text, repr(v)))
 	classifier=features.documentClassifier(training_dataset, treeFeature, svm.SVM)
-	with open(tiraInterface.model_kim,'wb') as f:
-		f.write(classifier.dumps())
-	print("written model.")
+	#with open(tiraInterface.model_kim,'wb') as f:
+	#	f.write(classifier.dumps())
+	#print("written model.")

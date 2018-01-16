@@ -58,6 +58,11 @@ selected_authors={
 	'Martin Crutsinger' : ['MARTIN CRUTSINGER', 'MARTIN S. CRUTSINGER'],
 	'Rita Beamish' : ['RITA BEAMISH']
 }
+# !!! reducing number of authors to three !!!
+for auth in list(selected_authors):
+        if auth[0] != 'D':
+                del selected_authors[auth]
+#
 selected_author_names = list(selected_authors.keys())
 selected_authors_reversed={}
 for name,pseudos in selected_authors.items():
@@ -121,7 +126,7 @@ def runCrossvalidation():
 		model=readModel(i)
 		testDocuments=[]
 		for authorDocs in crossvalDocuments:
-			testDocuments += authDocs[i]
+			testDocuments += authorDocs[i]
 		prediction=model.predict(testDocuments)
 		numDocuments=[len(authDocs[i]) for authDocs in crossvalDocuments]
 		numCorrect=[0 for _ in selected_author_names]
@@ -130,5 +135,6 @@ def runCrossvalidation():
 				numCorrect[selected_author_names.index(pred)] += 1
 		print(",".join("%d/%d" % (c,d) for (c,d) in zip(numCorrect,numDocuments))+"%d/%d" % (sum(numCorrect),sum(numDocuments)))
 if __name__ == '__main__':
-	for i in range(5):
-		getModel(i)
+	runCrossvalidation()
+	#for i in range(5):
+	#	getModel(i)

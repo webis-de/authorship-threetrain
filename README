@@ -9,33 +9,199 @@ in realistic scenarios.
 The paper [1] provides an algorithm to overcome this issue by adding a large number of unlabelled documents
 (i.e. further texts, for which the author is not known). By attributing authors to these
 unlabelled documents, the training set is increased and the results get improved.
-This algorithm is implemented in the file threetrain.py.
+
+We reimplemented this algorithm, together with the main algorithm of [3] (with the technical restriction delta=1).
+This README file documents the programmable interface as well as the mayer implementation details.
+Readily usable executables are shipped for two special corpora (namely Yanir Seroussi's imdb62 corpus (cf. [2])
+and a certain TREC corpus) and the documentbase format used in TIRA (www.tira.io). These user interfaces are
+documented in this README file. Users are encouraged to consult the file config.py in order to adapt the behaviour
+in several aspects (used libraries, hyperparameters, use of parallelization, random seeds etc).
+
+If you stumble upon anything in this code (or just happen to seriously use it), please let me know
+(github should provide you the means to contact me).
+
+Prerequisites
+=============
 
 In order to examine the texts, a syntactic analysis of the sentences is reqired. For this, the stanford NLP-parser
 (https://nlp.stanford.edu/software/lex-parser.shtml) is called. It should be installed in the subdirectory
-stanford-parser-full-2017-06-09.zip.
-The file stanford_parser.py provides python bindings to this parser for our purposes.
+stanford-parser-full-2017-06-09.
+
 Since there seems to be no way to verify the downloaded NLP software, it is recommended to run it only
 in a disposable virtual machine for security reasons. The libvirt sandbox (http://sandbox.libvirt.org/)
 provides such disposable virtual machines, which is used by default. This security measure can be
 removed by erasing 'virt-sandbox ' in stanford_parser.py. The virtual machines of libvirt sandbox usually come
 with little memory which is unsuited for large-scale parsing.
 
-Some of the syntactic features used to analyze documents are the "rewrite rules" (as the authors of [1] call it)
-or "k-ee-subtrees" (as the authors of [3] call it). The algorithms to generate these features are described in [3]
-and implemented in syntax_tree.c (not in python for performance reasons). This file has to be compiled to a shared object,
-libsyntax_tree.so to which python bindings are available as c_syntax_tree.py. A makefile is provided.
-
 In order to assign authors to documents, L2-regularized linear regression is used. The package LIBLINEAR
 only provides this regression type for two classes (i.e. two authors). A simple extension to an arbitrary finite
-number of authors is available as regression.py.
+number of authors is available as regression.py. Python bindings for liblinear of sklearn are required.
 
 We use the same dataset as in [1] (which is taken from [2] can can be downloaded from https://yanirseroussi.com/phd-work/).
 It consists of movie reviews from the page imdb.com. The dataset consists of 62000 reviews from 62 authors (1000 per author).
-The file imdb62.py loads and prepares these reviews.
 
-When all prerequisites are met, calling threeview.py will compute the syntactic structure of 8*40 documents and
-run the tri-training-algorihm on them with 10 documents per author labelled, 20 unlabelled and 10 used to test the performance.
+Another corpus examined is the TREC-AP corpus (described under http://www.daviddlewis.com/resources/testcollections/trecap/,
+no publicly available download link is known).
+
+Some of the syntactic features used to analyze documents are the "rewrite rules" (as the authors of [1] call it)
+or "k-ee-subtrees" (as the authors of [3] call it). The required algorithm is contained here, but requires
+a C compiler (for performance reasons). A makefile is supplied to compile the required shared object.
+Its interface is documented in the file syntax_tree_function_signatures. This file must be present in order to
+run the python code. It may be generated using the program cproto (https://invisible-island.net/cproto/cproto.html).
+This generation is by default part of the Makefile. If the program cproto is unavailable, the make process may fail;
+however, the python code will still work if no changes in the C-API werde made.
+
+Executable's documentation
+==========================
+
+To replicate the main results from [1], make sure config.py equals (or softly links to) config-reproduction.py, proceed in the following steps:
+ - first call the file computeAllTrees.py in order to parse all trees (this calls the Stanford NLP parser, so be aware of the performance/security
+considerations above).
+ - then call the file threeview.py
+Both steps may, depending on computational resources, take several days of computing. The second step will probably fail on most
+personal computers due to limited memory (1 TB probably does not suffice for the full 60 iterations, but should give you an impression).
+Results are written to the file results. First a comment reflecting the state of config.py, then a comma separated list
+with the following fields: iteration number, number of test documents, correctly predicted test documents by the character view,
+correct predictions by lexical view, correct predictions by syntactic view, correct predictions according to SCORE-SUM
+
+To replicate some results of [3], extract the AP corpus to a subdirectory called 'ap'. Then the following
+functions in the file ap.py have to be called in this order (execution may take a day or so, so modify file ap.py
+appropriately and then execute it):
+ - prepareSelected
+ - getModel(0),...,getModel(4)
+ - runCrossvalidation
+The last call outputs a labelled comma separated list with the prediction accuracies of all five models.
+
+To run the code on usual TIRA documentbases (e.g. for deploying it in TIRA), confer to the readme file
+TIRA.
+
+Source code documentation
+=========================
+
+We give a brief review what the separate source code files do.
+
+C Code:
+
+syntax_tree.c : implementation of the algorithm of [3] in C. Some functions for the python interface,
+	otherwise a more-or-less straighforward implementation of the mining algorithm. Certain non-obvious
+	estimates which are used have been personally proved, some considerations are to be found in IG.txt and kim_algol.txt.
+	They are straightforward generalizations of estimates which the paper states for the case of two authors
+	(and the proofs given even in this case lack some rigor...)
+syntax_tree_function_signatures : lists the function signaturs of syntax_tree.c, needed for c_syntax_tree.py
+
+Backend python files:
+
+c_syntax_tree.py : Python bindings for syntax_tree.c (resp. its compiled form, libsyntax_tree.so).
+diskdict.py : Provides the class DiscDict which can be used like a regular dictionary but uses a SQLITE database in the background,
+	making it more powerful than the python module shelve. Important features are the capability to fetch many entries at the same time
+	and temporarily holding them in memory.
+easyparallel.py : Provides a method to combine the possibilities of threading and multiprocessing in Python,
+	such that true parallelism may be achieved without sending everything through pipes.
+features.py : abstract definition of documents, views, features etc. Includes most of the other files here
+	and provides the interface which is used by most 'frontend' python files.
+imdb62.py : reads the imdb62 corpus.
+make_pospy.py : Creates the file pos.py out of the file pos.txt
+pos.txt : A (up to my best knowledge, complete) list of all POS-tags that the Stanford NLP Parser outputs, together with short descriptions.
+prepare_documents.py : Calls document parsers and stores their outputs.
+recover_trees.py : Recovers the trees which were printed by st_printTree, e.g. because a later computation crashed and
+	I didn't want to repeat one week of tree mining.
+stanford_parser.py : Python bindings for the Stanford NLP Parser
+strip_omni.py : Strips spurious 'OMNI'-tags out of (pseudo-) XML files. Required for the PAN11-corpus
+	(http://pan.webis.de/clef11/pan11-web/author-identification.html)
+svm.py : Bindings for the sklearn SVM interface (i.e. links between the abstract interface provided by sklearn and the one from features.py)
+syntax_tree.py : Converts the trees output by the Stanford NLP Parser to those which can are used by the mining code (syntax_tree.c)
+threeview.py : Implements the main algorithm of [1]
+tira.py : Bundles various conventions for the different files tira-*.py.
+
+Frontend python files:
+ap.py : Replication of the experiments of [3] on the TREC-AP corpus
+threeview.py : When called directly, replicates the experiments of [1] on the imdb62 corpus.
+subdivided_tritrain.sh : Used for Tri-Training inside TIRA. Splits up the unknown documentbase into several chunks
+	and runs the tritraining algorithm, where all but one chunks are used as 'extra unknown' documents
+	and the remaining chunk as 'test' documents (runs tri-training once per chunk).
+tira-prepare-documents.py : Calls specific parsers on the given documents (training, unknown or both) and stores their outputs.
+tira-simple-predict.py : Predicts the authorship of the unknown documents based to one of the views. The file to run the algorithm of [3] in TIRA.
+tira-train-model.py : Trains a model on the training dataset
+tira-tritrain.py : Runs the tritraining in the above described subdivided manner. Python really likes to be killed and restarted between multiple
+	runs of the tritraining algorithm (if you do not, it will eat all your memory). Hence better call subdivided_tritrain.sh.
+
+The other files are artifacts from the past which I have not found the time to delete or properly document. You are best adviced to ignore them.
+
+API description
+===============
+
+For the basic functions, you have to include features.py.
+All documents (training/unlabelled/test) should be passed as instances of the class features.document.
+(call features.document(text) resp. features.document(text, author) where text is the string representing the
+document's content and, possibly, author any identifier).
+It is OK to have test (and unknown) documents labelled with authors, this is obviously required to print accuracies.
+Your training (resp. unlabelled/testing) documents should be combined to a documentbase, to be called
+as features.documentbase([doc1, doc2, ..., docn]).
+
+BUT there is a caveat: features.py does a lot of caching, and this is done in abstract manner. For each document,
+a couple of things are computed (called documentFunctions, this can be anything: word length, syntax trees, ...).
+These are cached in something called documentFunctionCollection (or, for short, functionCollection).
+For each corpus (i.e. collection of training, testing and possibly extra unlabelled documents), you should create
+exactly one such functionCollection, and set the attribute 'functionCollection' of your documentbases to these functionCollections.
+
+Having your documentbases and functionCollection created, the authorship attribution process goes in three steps:
+ - preparing documents: This is optional, but recommended for larger corpora. Many heavy document functions
+	(most notably calculating stanford trees) will be computed for all documents under considerations and
+	the results stored in regular files (as diskdicts). If this preparation step is not done,
+	these will be computed on-the-fly before training and prediction, and discarded when the computation stops
+	by error or regular termination. You will find the function prepareDocumentsChunked from prepare_documents.py useful for this task:
+	prepareDocumentsChunked(filename_for_stanford_trees, filename_for_tokens, filename_for_pos, filename_for_c_syntax_trees, documentbase),
+	the first four arguments being strings.
+
+	If you have prepared your document in this way, you should load these databases before each further step (otherwise, these
+	further steps will recompute these document functions). This goes as follows:
+	with diskdict.DiskDict(filename_for_stanford_trees) as stanford_dict, ..., diskdict.DiskDict(filename_for_c_syntax_trees) as c_syntax_tree_dict,
+		#this opened the databases and ensures they are safely closed afterwards
+		#if you like to live dangerous, consider calling stanford_dict=diskdict.DiskDict(filename_for_stanford_trees) etc. and calling
+		#stanford_dict.close() etc. afterwards
+		functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(stanford_dict)
+			#puts the dictionary stanford_dict as cache for document the function features.stanfordTreeDocumentFunction.
+                functionCollection.getFunction(features.tokensDocumentFunction).setCacheDict(tokens_dict)
+                functionCollection.getFunction(features.posDocumentFunction).setCacheDict(pos_dict)
+                functionCollection.getFunction(features.stDocumentDocumentFunction).setCacheDict(st_dict)
+		#do remaining computations here
+ - training models (needs only the training documents): First you should decide which kind of model you want to train (model based on character n-grams,
+	syntax tree frequencies, ...). Such a thing is called 'view' (the technical definition of this term is in the file features.py).
+		The default implementation ships the following views:
+		- features.characterView([n1,n2,...]): Represents each document by the (absolute) frequencies of all occuring
+			character n1-grams, character n2-grams, ...
+		- features.lexicalView(): Represents each document by the (absolute) frequencies of all occuring words (tokens).
+		- features.syntacticView([n1,n2,...], technical arguments): Represents each document by the (absolute) frequencies
+			of all occuring pos n1-grams, pos n2-grams, ... as well as the frequencies (as defined in [3]) of all discriminative
+			syntax trees of the training base
+		- features.kimView(): Represents each document by the frequencies (as defined in [3]) of all discriminative
+			syntax trees of the training base.
+	Once you have created such a view, make sure to set its attribute 'functionCollection' appropriately.
+	Then you have to decide which kind of machine learning method you want to use. The following machine learning models are implemented
+	by default:
+		- regression.multiclassLogitSklearn: multiclass logistic regression by the package sklearn
+		- regression.multiclassLogitLiblinear: multiclass logistic regression by the package liblinearutil + extra code for multiclass prediction
+		- svm.SVM : support vector machines by the package sklearn
+	Now calling view.createClassifier(trainingDocumentbase, machineLearnModel) produces a trained model.
+	A trained model (also called classifier) can be pickeled by calling classifier.dumps() (this produces a bytestring to be saved elsewhere).
+	It can be recovered by calling features.loadClassifier(dumped_bytestring, functionCollection).
+- actual prediction: Calling classifier.predict([document1,document2,...]) outputs the predicted authors of the documents, in order.
+	Calling classifier.mapping(document) outputs a counter of the form {author1: likelihood1,author2: likelihood2,...}
+	assigning the likelihood that a certain author wrote this document. Likelihoods may or may not sum up to one.
+	Calling classifier.mappingv([document1,document2,...]) gives the same as [classifier.mapping(document1),classifier.mapping(document2),...],
+	but is faster.		
+	To perform the more sophisticated tri-training, call the function
+def threeTrain(view1,view2,view3,trainingBase, unlabelledBase, testBase, num_iterations, num_unlabelled,results_stream=None,initial_classifier1=None,
+                        initial_classifier2=None,initial_classifier3=None).
+	Here, view1, view2, view3 are three views, corresponding usually to character, lexical and syntactic views. The next three arguments
+	are the documentbases for training, extra unlabelled and testing documents. num_iterations tells how many tri-training iterations should
+	be performed. The algorithm may terminate earlier when it runs out of extra unlabelled documents. num_unlabelled states the number
+	of unlabelled documents to consider per iteration. results_stream may be a stream (e.g. a writeable file stream) to which
+	intermediate accuracy assignments are written (provided testBase is labelled). initial_classifier1, initial_classifier2
+	and initial_classifier3 may refer to trained classifiers of the three views, speeding up the first iteration of the algorithm.
+
+	If a classifier for the syntactic view is already available and you do not want to re-mine any trees (with possibly enlarged training sets),
+	call syntacticView.readTreeFeatureFromClassifier(classifier).
 
 References
 ==========
