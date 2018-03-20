@@ -11,6 +11,7 @@ import threading
 import itertools
 import diskdict
 import sys
+import syntax_cache
 documentbase=None
 functionCollection=None
 cacheUpdateNeeded=False
@@ -148,6 +149,11 @@ class asynchronousLoader:
 					return
 				self.orders.append(found)
 loadReviews()
+cache=syntax_cache.cache(functionCollection)
+cache.setCacheFile(features.stanfordTreeDocumentFunction, 'stanford-trees.db')
+cache.setCacheFile(features.tokensDocumentFunction, 'tokens.db')
+cache.setCacheFile(features.posDocumentFunction, 'pos.db')
+cache.setCacheFile(features.stDocumentDocumentFunction, 'c_syntax_tree.db')
 #loader = asynchronousLoader()
 print("loaded reviews")
 def initialize(filename='imdb62_syntaxcache',indices=None):
@@ -191,15 +197,18 @@ def doMiningTest(base):
 
 if __name__ == '__main__':
 	print("num. documents: ",[len(v) for v in documentbase.byAuthor.values()])
+	'''
 	with diskdict.DiskDict('stanford-trees.db') as stanford_dict, diskdict.DiskDict('tokens.db') as tokens_dict, \
 		diskdict.DiskDict('pos.db') as pos_dict, diskdict.DiskDict('c_syntax_tree.db') as st_dict:
 		functionCollection.getFunction(features.stanfordTreeDocumentFunction).setCacheDict(stanford_dict)
 		functionCollection.getFunction(features.tokensDocumentFunction).setCacheDict(tokens_dict)
 		functionCollection.getFunction(features.posDocumentFunction).setCacheDict(pos_dict)
 		functionCollection.getFunction(features.stDocumentDocumentFunction).setCacheDict(st_dict)
+'''
+	with cache:
 		#readCache()
 		print("stanford trees loaded.")
-		chunksize = 2000
+		chunksize = 2
 		for i in range(0,len(documentbase.documents),chunksize):
 			print("i: ",i)
 			docs = documentbase.documents[i:i+chunksize]

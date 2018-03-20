@@ -361,6 +361,10 @@ class tokensDocumentFunction(derivedDocumentFunction):
 	def __init__(self):
 		super().__init__(stanfordTreeDocumentFunction)
 	def deriveValue(self,document,trees):
+		'''
+		!!!!
+		'''
+		raise "No!"
 		result = []
 		for tree in trees:
 			result += [l.data for l in tree.leaves]
@@ -587,6 +591,27 @@ class kimView(view):
 	def getFeature(self,docbase):
 		return self.getFunction(syntaxTreeFrequencyFeature, tuple(docbase.stDocumentbase.mineDiscriminativePatterns(len(pos.pos_tags), \
 			self.supportLowerBound, self.n, self.k, num_processes=config.num_threads_mining)))
+class posView(view):
+	__slots__=['ns']
+	def __init__(self, ns):
+		self.ns = ns
+	def getFeature(self,docbase):
+		features=[]
+		for n in self.ns:
+			function = self.getFunction(posNGramCounterDocumentFunction,n)
+			limit = config.featurelimit_max_pos_ngrams[n-1]
+			if limit is None:
+				values = set()
+				for vals in function.getValuev(docbase.documents):
+					values = values.union(set(vals))
+				features.append((posNGramFeature,n,tuple(values)))
+			else:
+				values = Counter()
+				for doc in docbase.documents:
+					values += function.getValue(doc)
+				selection = heapq.nlargest(limit,values,lambda ngram: values[ngram])
+				features.append((posNGramFeature,n,tuple(selection)))
+		return self.getFunction(combinedFeature,*features)
 class mlModel:
 	# a model is a mapping from an abstract feature space F and a set of labels L to the unit interval [0,1].
 	# they are created from by a machine learning algorithm. This class should be inherited from

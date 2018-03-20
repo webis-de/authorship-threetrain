@@ -40,12 +40,12 @@ configuration = {
 	#irrelevant for the outcome of the program (the training process should be identical, the prediction may slightly be altered
 	#due to the fact that scikit normalizes probability outcomes to sum up to 1)
 
-'featurelimit_max_character_ngrams': [None,None,None], # limit the character unigrams, bigrams, trigrams etc. to the most frequent ones.
+'featurelimit_max_character_ngrams': [None,None,100], # limit the character unigrams, bigrams, trigrams etc. to the most frequent ones.
 							# Must have three entires either None or a natural number or zero. Defaults to [None,None,None].
 							# If n = 1,2,3 and featurelimit_max_character_ngrams[n-1] is None, consider all character n-grams.
 							# Otherwise consider only the featurelimit_max_character_ngrams[n-1] most frequent n-grams.
 							# Note that only the case n=3 is relevant.
-'featurelimit_max_word_unigrams': None, #similar. Defauls to None
+'featurelimit_max_word_unigrams': 100, #similar. Defauls to None
 'featurelimit_max_pos_ngrams': [None,None,None], #similar. Defauls to [None,None,None]. The cases n=1,2,3 are relevant.
 
 'debug_memory': False, # shows various statistics around memory allocation. Compare the COUNT_MALLOC constant of syntax_tree.c
